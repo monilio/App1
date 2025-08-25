@@ -1,5 +1,6 @@
 package com.example.appjimenez.ui.web
 
+import android.R.attr.overScrollMode
 import android.app.Activity
 import android.os.Message
 import android.view.View
@@ -21,7 +22,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
-
+import android.view.ViewGroup
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
 
 @Composable
@@ -40,35 +42,48 @@ fun WebAppScreen(url: String) {
 
 
     // Manejo global del botón atrás
+    // Back principal (gestión combinada)
     BackHandler(enabled = true) {
         when {
             popupWebView != null -> {
                 try { popupWebView?.destroy() } catch (_: Exception) {}
                 popupWebView = null
             }
-            webViewRef?.canGoBack() == true -> {
-                webViewRef?.goBack()
-            }
-            else -> {
-                activity?.finish()
-            }
+            webViewRef?.canGoBack() == true -> webViewRef?.goBack()
+            else -> activity?.finish()
         }
     }
+
+
 
 
     AndroidView(                        //Permite usar el WebView o MapView
         modifier = Modifier
             .fillMaxSize()        // ocupa toda la pantalla
             .systemBarsPadding(), // añade padding igual a status + nav bar
-        factory = { context ->          //Parametro obligatorio de AndroidView
 
-            WebView(context).apply {    //Crea un nuevo WebView y le pasa un contexto
+    factory = { context ->          //Parametro obligatorio de AndroidView
+
+        // Contenedor nativo con Pull-to-Refresh
+        val swipe = SwipeRefreshLayout(context).apply {
+            // Opcional: esquema de colores del spinner
+            setColorSchemeResources(
+                android.R.color.holo_blue_bright,
+                android.R.color.holo_green_light,
+                android.R.color.holo_orange_light
+            )
+        }
+
+        val web = WebView(context).apply {    //Crea un nuevo WebView y le pasa un contexto
 
                 webViewRef = this // ⬅️ guardamos referencia a la WebView principal
 
+                // (opcional, ayuda con el “glow” de overscroll)
+                overScrollMode = View.OVER_SCROLL_ALWAYS
                 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
                 //NAVEGACION
                 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
                 // Asegura que la navegación suceda dentro del WebView
                 webViewClient = object : WebViewClient() {  //Propiedad que controla como el WebView maneja la navegacion y crea una clase anonima que extiende WebViewClient (permite sobreescribir metodos de navegacion)
@@ -90,6 +105,8 @@ fun WebAppScreen(url: String) {
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
                         canGoBack = view?.canGoBack() == true
+                        // Fin del refresco si veníamos de pull-to-refresh
+                        swipe.isRefreshing = false
                     }
                 }
 
@@ -139,8 +156,6 @@ fun WebAppScreen(url: String) {
                                     super.onPageFinished(v, u)
                                     // nada
                                 }
-
-
                             }
 
                             webChromeClient = object : WebChromeClient() {
@@ -220,12 +235,31 @@ fun WebAppScreen(url: String) {
                 loadUrl(url)        //Carga el url (Esta es la funcion principal)
             }
 
+            // 🔑 Para WebView, el SwipeRefreshLayout no siempre sabe si puede “scrollear arriba”.
+            // Con este callback le decimos: “bloquea el refresh si el WebView NO está en el tope”.
+            swipe.setOnChildScrollUpCallback { _, _ ->
+                (web.scrollY > 0)
+            }
 
+            // Acción de refresco (pull-to-refresh)
+            swipe.setOnRefreshListener {
+                val current = web.url ?: url
+                web.loadUrl(current) // o web.reload()
+            }
+
+            // Móntalo
+            swipe.addView(
+                web,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+            swipe
         },
         update = { view ->
-            canGoBack = view.canGoBack()
+            // 'it' es el SwipeRefreshLayout
+            canGoBack = webViewRef?.canGoBack() == true
         }
     )
-
-
 }
