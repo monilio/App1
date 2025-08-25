@@ -27,120 +27,146 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
 
 @Composable
-fun WebAppScreen(url: String) {
-
-    val activity = (LocalActivity.current as? Activity)
-
-    var webViewRef by remember { mutableStateOf<WebView?>(null) }
-    var popupWebView by remember { mutableStateOf<WebView?>(null) }
-    var canGoBack by remember { mutableStateOf(false) }
-
-    // Estado para pull-to-refresh
-    var isRefreshing by remember { mutableStateOf(false) }
-    var atTop by remember { mutableStateOf(true) } // true cuando scrollY == 0
+fun WebAppScreen(url: String) {     //Toma de input un valor String que será el url o link al que se acceda al iniciar la app
 
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //DECLARACION DE VARIABLES
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    // Manejo global del botón atrás
-    // Back principal (gestión combinada)
-    BackHandler(enabled = true) {
-        when {
-            popupWebView != null -> {
-                try { popupWebView?.destroy() } catch (_: Exception) {}
-                popupWebView = null
+    val activity = (LocalActivity.current as? Activity)                 //Introduce la Activity en una variable local
+                                                                        //Una Activity es una pantalla de la aplicacion
+                                                                        //La interrogacion permite que el valor pueda ser nulo
+                                                                        //Se usara por ejemplo en el BackHandler para cerrar la pantalla
+
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }       //Guarda en una variable local una referencia nullable (que puede ser null) a la WebView principal, tambien usada por el BackHandler
+                                                                        //La WebView es un objeto que tiene sus propias funciones y caracteristicas
+
+    var popupWebView by remember { mutableStateOf<WebView?>(null) }     //Igual que la anterior, pero con una WebView hija (los popups)
+    var canGoBack by remember { mutableStateOf(false) }                 //Guarda en una variable local booleana que representa si hay una pagina a la que volver
+
+
+
+
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //MANEJO BOTON ATRAS
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    BackHandler(enabled = true) {                                           //Funcion que establece el uso de boton de atras del movil
+        when {                                                              //Bucle when para que siempre este activo y atento para ver si ocurre lo de dentro de las llaves
+            popupWebView != null -> {                                       //Si hay un popup abierto
+                try { popupWebView?.destroy() } catch (_: Exception) {}     //Destruye el objeto WebView del popup (la ? cubre el caso de que ya fuera null)
+                popupWebView = null                                         //Limpias la referencia y la dejas vacia (es decir, el WebView de popup se vuelve null)
             }
-            webViewRef?.canGoBack() == true -> webViewRef?.goBack()
-            else -> activity?.finish()
+            webViewRef?.canGoBack() == true -> webViewRef?.goBack()         //Si esta WebView tiene una WebView anterior a la que volver, vuelve a ella
+            else -> activity?.finish()                                      //Si no habia ni popup ni pagina anterior, cierra la actividad (la pantalla) y por tanto cierra la app
         }
     }
 
 
 
 
-    AndroidView(                        //Permite usar el WebView o MapView
-        modifier = Modifier
-            .fillMaxSize()        // ocupa toda la pantalla
-            .systemBarsPadding(), // añade padding igual a status + nav bar
 
-    factory = { context ->          //Parametro obligatorio de AndroidView
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //DEFINICION DEL ANDROIDVIEW
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        // Contenedor nativo con Pull-to-Refresh
-        val swipe = SwipeRefreshLayout(context).apply {
-            // Opcional: esquema de colores del spinner
-            setColorSchemeResources(
+    AndroidView(                        //Es un composable de Jetpack Compose que permite insertar un View clasico de Android como: WebView, MapView o TextView
+        modifier = Modifier             //Declara la lista de modificadores, que determinaran caracteristicas fisicas (en este caso del AndroidView)
+            .fillMaxSize()              //Hace que el AndroidView ocupe toda la pantalla
+            .systemBarsPadding(),       //Hace que la AndroidView pare antes de ser cubierta por las barras superior e inferior del propio movil (las de notificaciones y navegacion respectivamente)
+
+    factory = { context ->              //Parametro obligatorio de AndroidView que debera usar el WebView
+
+
+        val swipe = SwipeRefreshLayout(context).apply {     //Utiliza el context para crear un SwipeRefreshLayout
+                                                            //Este es un ViewGroup que contiene al WebView y detecta el gesto de arrasstrar hacia abajo para lanzar un refresh
+                                                            //Se configurara mas abajo con setOnRefreshListener
+
+            setColorSchemeResources(                        //Configura los colores del circulo que gira al hacer refresh (opcional)
                 android.R.color.holo_blue_bright,
                 android.R.color.holo_green_light,
                 android.R.color.holo_orange_light
             )
         }
 
-        val web = WebView(context).apply {    //Crea un nuevo WebView y le pasa un contexto
-
-                webViewRef = this // ⬅️ guardamos referencia a la WebView principal
-
-                // (opcional, ayuda con el “glow” de overscroll)
-                overScrollMode = View.OVER_SCROLL_ALWAYS
-                /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                //NAVEGACION
-                /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-                // Asegura que la navegación suceda dentro del WebView
-                webViewClient = object : WebViewClient() {  //Propiedad que controla como el WebView maneja la navegacion y crea una clase anonima que extiende WebViewClient (permite sobreescribir metodos de navegacion)
-                    override fun shouldOverrideUrlLoading(  //Se sobreescribe el metodo de WebViewClient
-                        view: WebView?,
-                        request: WebResourceRequest?
-                        //Para clickar cosas dentro de la pagina
-                    ): Boolean {
-                        val target = request?.url?.toString() ?: return false
-                        view?.loadUrl(target)   //Si el click devuelve una URL, pasa a esta
-                        return true
+        val web = WebView(context).apply {                  //Crea un nuevo WebView y le pasa el contexto obligatorio, a su vez lo guarda en una variable local llamada web
+                                                            //Este es un objeto que usara una url o link para mostrar una pagina web en al AndroidView
+
+                webViewRef = this                           //Guarda la referencia a la WebView en la variable local que definimos anteriormente
+                overScrollMode = View.OVER_SCROLL_ALWAYS    //Muestra el efecto tipico cuando tratas de deslizar mas alla del limite de la pantalla (opcional)
+
+
+
+                webViewClient = object : WebViewClient() {  //Propiedad de un objeto WebView que establece el controlador del navegador, en este caso sera el objeto WebViewClient
+                                                            //Todas las llamadas realcionadas con la navegacion, como abrir links, pasaran por este objeto
+                                                            //Es un objeto que permite controlar las cosas relacionadas con la navegacion
+
+                    override fun shouldOverrideUrlLoading(                      //Se sobreescribe el metodo de WebViewClient si se da a un link dentro de la pagina
+                        view: WebView?,                                         //La pagina que se esta intentando cargar
+                        request: WebResourceRequest?                            //Detalles de la nueva pagina, como el link y otra info
+                    ): Boolean {                                                //Situacion de verdadero falso
+                                                                                //Verdadero es que el objeto maneje la interaccion y falso que no haga nada y se las apañe el propio WebView
+
+                        val target = request?.url?.toString() ?: return false   //Coje la url y lo transforma en String, si fuera null, devuelve Falso (El controlador no hace nada y se debe ocupar el WebView)
+                        view?.loadUrl(target)                                   //Coje el link clickado (variable view) y lo carga
+                        return true                                             //Devuelve True, indicando al WebView que no haga nada, que ya se ha encargado el controlador cargando el link
                     }
 
-                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                        super.onPageStarted(view, url, favicon)
-                        canGoBack = view?.canGoBack() == true
+                    override fun onPageStarted(                     //Metodo del WebViewClient que se ejecuta cuando el WebView empieza a cargar una pagina
+                        view: WebView?,                             //WebView que esta cargando la pagina
+                        url: String?,                               //Url de esta pagina
+                        favicon: android.graphics.Bitmap?) {        //Icono de la pagina
+
+                        super.onPageStarted(view, url, favicon)     //LLama al comportamiento por defecto del WebViewClient con los parametros como inputs
+                        canGoBack = view?.canGoBack() == true       //Actualiza el estado canGoBack, indicando que si se ha cargado una nueva pagina, habra una a la que volver
                     }
 
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        super.onPageFinished(view, url)
-                        canGoBack = view?.canGoBack() == true
-                        // Fin del refresco si veníamos de pull-to-refresh
-                        swipe.isRefreshing = false
+                    override fun onPageFinished(view: WebView?, url: String?) {     //Metodo del WebViewClient que se ejecuta cuando la pagina termina de cargarse completamente
+                        super.onPageFinished(view, url)                             //Llama al comportamiento por defecto del WebViewClient con los parametros como inputs
+                        canGoBack = view?.canGoBack() == true                       //Actualiza una vez mas por si acaso el historial cambia al terminar de cargarse la pagina
+                        swipe.isRefreshing = false                                  //Si has llegado a esta pagina refresheando, al terminar de cargar la pagina, cambia el estado de refreshing a false para indicar que el refresh ha finalizado
                     }
                 }
 
-                /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                //POPUPS
-                /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-                webChromeClient = object : WebChromeClient() {
 
-                    // ✅ Ahora mostramos el popup real en un Dialog con WebView hija
-                    override fun onCreateWindow(
-                        view: WebView?,
-                        isDialog: Boolean,
-                        isUserGesture: Boolean,
-                        resultMsg: Message?
-                    ): Boolean {
-                        if (view == null || resultMsg == null) return false
 
-                        val child = WebView(view.context).apply {
-                            settings.apply {
-                                javaScriptEnabled = true
-                                domStorageEnabled = true
-                                databaseEnabled = true
-                                loadsImagesAutomatically = true
-                                cacheMode = WebSettings.LOAD_DEFAULT
-                                javaScriptCanOpenWindowsAutomatically = true
-                                setSupportMultipleWindows(true)
-                                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                                mediaPlaybackRequiresUserGesture = true
-                                userAgentString = WebSettings.getDefaultUserAgent(context)
-                                useWideViewPort = true
-                                loadWithOverviewMode = true
+                webChromeClient = object : WebChromeClient() {  //Otra propiedad del WebView, parecida al webViewClient, pero con una funcion diferente
+                                                                //El otro controlaba la navegacion, este controla funciones avanzadas del navegador, como popus, JavaScript o geolocalizacion
+                                                                //Una vez toma como valor un objeto integro conocido como WebChromeClient
+
+                    override fun onCreateWindow(    //Metodo que se llama al tratar de abrir una ventana nueva
+                                                    //Por defecto WebView no abre ventanas nuevas
+                        view: WebView?,             //WebView principal que pidio abrir la ventana
+                        isDialog: Boolean,          //Boolean que indica si la ventana abierta deberia mostrarse como un dialogo modal ()??
+                        isUserGesture: Boolean,     //True si fuer por accion del usuario, False si se lanzo automaticamente
+                        resultMsg: Message?         //Mensaje especial que permite transportar la nueva WebView creada de vuelta al sistema, es decir, el sobre en el que va la nueva ventana al entregarla al sistema
+                    ): Boolean {                    //True es ya se ha gestionado la creacion de la nueva ventana, False es no se gestiono e ingora el intento de abrirla
+                        if (view == null || resultMsg == null) return false     //Si el view principal es nulo o no hay forma de entregar esta nueva ventana al sistema, toma False e ignora el intento
+
+                        val child = WebView(view.context).apply {               //Crea un nuevo objeto WebView usando el mismo context que el padre y lo guarda en una variable llamada child (que representa el popup)
+                                                                                //Es decir, fabrica un navegador independiente dentro de tu app exclusivo para la ventana emergente
+
+                            settings.apply {                                                        //Comienza la lista de ajustes de child
+                                javaScriptEnabled = true                                            //Permite que la pagina ejecute codigo JavaScript
+                                domStorageEnabled = true                                            //Habilita el almacenamiento web (localStorage y sessionStorage)
+                                databaseEnabled = true                                              //Permite bases de datos web (HTML5 Web SQL)
+                                loadsImagesAutomatically = true                                     //Las imagenes se cargan sin intervencion extra
+                                cacheMode = WebSettings.LOAD_DEFAULT                                //Usa el cache si esta disponible
+                                javaScriptCanOpenWindowsAutomatically = true                        //Permite que el propio JavaScript cree popups
+                                setSupportMultipleWindows(true)                                     //Habilita multiples ventanas dentro de este WebView
+                                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE     //Permite mezclar HTTP y HTTPS
+                                mediaPlaybackRequiresUserGesture = true                             //Evite el autoplay y exige la accion del usuario para reproducir medios
+                                userAgentString = WebSettings.getDefaultUserAgent(context)          //Usa el User-Agent (identificacion del navegador) estandar de Android/Chrome, asi la web no te detecta como un navegador raro
+                                useWideViewPort = true                                              //Interpreta el viewport como en un navegador normal, no como uno fijo, es decir, coge la forma que le diga la pagina web
+                                loadWithOverviewMode = true                                         //Ajusta el contenido al ancho de la pantalla
                             }
-                            setLayerType(View.LAYER_TYPE_HARDWARE, null)
+
+                            setLayerType(View.LAYER_TYPE_HARDWARE, null)    //Fuerza el renderizado por GPU en lugar de por software (mejor rendimiento)
 
                             webViewClient = object : WebViewClient() {
                                 override fun shouldOverrideUrlLoading(
