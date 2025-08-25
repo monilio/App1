@@ -41,6 +41,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.viewinterop.AndroidView
+
+import android.app.Activity
+import androidx.activity.compose.LocalActivity
 
 
 class MainActivity : ComponentActivity() {
@@ -61,15 +73,31 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun WebAppScreen(url: String) {
 
+    val activity = (LocalActivity.current as? Activity)
 
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var popupWebView by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
+
     BackHandler(enabled = canGoBack) {
         webViewRef?.goBack()
     }
 
-    // ⬇️ estado para mostrar popups en un Dialog
-    var popupWebView by remember { mutableStateOf<WebView?>(null) }
+    // Manejo global del botón atrás
+    BackHandler(enabled = true) {
+        when {
+            popupWebView != null -> {
+                try { popupWebView?.destroy() } catch (_: Exception) {}
+                popupWebView = null
+            }
+            webViewRef?.canGoBack() == true -> {
+                webViewRef?.goBack()
+            }
+            else -> {
+                activity?.finish()
+            }
+        }
+    }
 
 
     AndroidView(                        //Permite usar el WebView o MapView
@@ -98,16 +126,14 @@ fun WebAppScreen(url: String) {
                         return true
                     }
 
-
-
-
-                    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                    //SOLUCIONADOR DE PROBLEMA DE OVERLAY
-                    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                        super.onPageStarted(view, url, favicon)
+                        canGoBack = view?.canGoBack() == true
+                    }
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
-                        // Intencionadamente vacío
+                        canGoBack = view?.canGoBack() == true
                     }
                 }
 
@@ -148,10 +174,17 @@ fun WebAppScreen(url: String) {
                                     v: WebView?,
                                     req: WebResourceRequest?
                                 ): Boolean {
-                                    val t = req?.url?.toString() ?: return false
-                                    v?.loadUrl(t)
+                                    //val t = req?.url?.toString() ?: return false
+                                    //v?.loadUrl(t)
                                     return true
                                 }
+
+                                override fun onPageFinished(v: WebView?, u: String?) {
+                                    super.onPageFinished(v, u)
+                                    // nada
+                                }
+
+
                             }
 
                             webChromeClient = object : WebChromeClient() {
@@ -167,7 +200,7 @@ fun WebAppScreen(url: String) {
                         transport.webView = child
                         resultMsg.sendToTarget()
 
-                        popupWebView = child // ⬅️ activar el Dialog
+                        popupWebView = child // activar el Dialog
                         return true
                     }
 
