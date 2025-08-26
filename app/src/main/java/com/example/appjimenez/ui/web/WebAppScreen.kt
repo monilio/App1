@@ -24,7 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import android.view.ViewGroup
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-
+import android.net.Uri
+import android.content.Intent
 
 @Composable
 fun WebAppScreen(url: String) {     //Toma de input un valor String que será el url o link al que se acceda al iniciar la app
@@ -63,9 +64,6 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
             else -> activity?.finish()                                      //Si no habia ni popup ni pagina anterior, cierra la actividad (la pantalla) y por tanto cierra la app
         }
     }
-
-
-
 
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -109,7 +107,7 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                         view: WebView?,                                         //La pagina que se esta intentando cargar
                         request: WebResourceRequest?                            //Detalles de la nueva pagina, como el link y otra info
                     ): Boolean {                                                //Situacion de verdadero falso
-                                                                                //Verdadero es que el objeto maneje la interaccion y falso que no haga nada y se las apañe el propio WebView
+                                                                                //Verdadero es que el objeto maneje la interaccion y falso que no haga nada y se las arregle el propio WebView
 
                         val target = request?.url?.toString() ?: return false   //Coje la url y lo transforma en String, si fuera null, devuelve Falso (El controlador no hace nada y se debe ocupar el WebView)
                         view?.loadUrl(target)                                   //Coje el link clickado (variable view) y lo carga
@@ -170,6 +168,7 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
 
                             webViewClient = object : WebViewClient() {              //Este es el cliente de naveegacion pero para el child (al igual que se hizo con el WebView padre)
 
+                                /*
                                 override fun shouldOverrideUrlLoading(
                                     v: WebView?,
                                     req: WebResourceRequest?
@@ -178,10 +177,37 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                                     v?.loadUrl(t)                                   //Si no es null, el controlador carga la url
                                     return true                                     //Si ha cargado la url, devuelve True, indicando que ya se ha ocupado de tod0
                                 }
+                                */
+
+                                override fun onPageStarted(v: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                    // 1) Redirige la URL del popup a la WebView principal
+                                    if (url != null) view.loadUrl(url)
+                                    // 2) Limpia el child para evitar fugas y estados raros
+                                    try { destroy() } catch (_: Exception) {}
+                                    popupWebView = null
+                                }
+                                /*
+                                override fun onPageStarted(                     //Metodo del WebViewClient que se ejecuta cuando el WebView empieza a cargar una pagina
+                                    v: WebView?,                             //WebView que esta cargando la pagina
+                                    url: String?,                               //Url de esta pagina
+                                    favicon: android.graphics.Bitmap?) {        //Icono de la pagina
+
+                                    super.onPageStarted(v, url, favicon)     //LLama al comportamiento por defecto del WebViewClient con los parametros como inputs
+                                    canGoBack = v?.canGoBack() == true       //Actualiza el estado canGoBack, indicando que si se ha cargado una nueva pagina, habra una a la que volver
+                                }
+                                */
+
 
                                 override fun onPageFinished(v: WebView?, u: String?) {  //Se ejecuta cuando termina de cargar la pagina
+
                                     super.onPageFinished(v, u)                          //Se llama a la implementacion por defecto
+
+                                    canGoBack = v?.canGoBack() == true                       //Actualiza una vez mas por si acaso el historial cambia al terminar de cargarse la pagina
+                                    swipe.isRefreshing = false                                  //Si has llegado a esta pagina refresheando, al terminar de cargar la pagina, cambia el estado de refreshing a false para indicar que el refresh ha finalizado
+
+
                                 }
+
                             }
 
                             webChromeClient = object : WebChromeClient() {                      //Funciones avanzadas del navegador pero para el child
@@ -197,7 +223,7 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                         transport.webView = child                                   //Este objeto es el child
                         resultMsg.sendToTarget()                                    //El sobre se envia al WebView padre
 
-                        popupWebView = child                                        //Se devuelve el valor a popupView de child
+                        //popupWebView = child                                        //Se devuelve el valor a popupView de child
                         return true                                                 //Se devuelve True, indicando que ya se ha gestionado esta ventana
                     }
 
@@ -269,9 +295,9 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
             }
 
             // Móntalo
-            swipe.addView(                                  //Swipe es un ViewGroup y con addView añade un hijo al contenedor
-                web,                                        //web es el hijo añadido
-                ViewGroup.LayoutParams(                     //Se pasan los parametros de diseño
+            swipe.addView(                                  //Swipe es un ViewGroup y con addView incluye un hijo al contenedor
+                web,                                        //web es el hijo incluido
+                ViewGroup.LayoutParams(                     //Se pasan los parametros de forma
                     ViewGroup.LayoutParams.MATCH_PARENT,    //En el ancho, ocupa tod0 el contenedor
                     ViewGroup.LayoutParams.MATCH_PARENT     //En el alto, ocupa tod0 el contenedor
                 )
