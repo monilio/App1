@@ -109,9 +109,25 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                     ): Boolean {                                                //Situacion de verdadero falso
                                                                                 //Verdadero es que el objeto maneje la interaccion y falso que no haga nada y se las arregle el propio WebView
 
+                        val uri = request?.url ?: return false
+                        val scheme = uri.scheme ?: return false
+
+                        // Deja que Chromium maneje la navegación normal (más rápido y correcto).
+                        if (scheme == "http" || scheme == "https") return false
+
+                        // Maneja tú esquemas especiales.
+                        return try {
+                            val intent = Intent(Intent.ACTION_VIEW, uri)
+                            view?.context?.startActivity(intent)
+                            true
+                        } catch (_: Exception) {
+                            false
+                        }
+                        /*
                         val target = request?.url?.toString() ?: return false   //Coje la url y lo transforma en String, si fuera null, devuelve Falso (El controlador no hace nada y se debe ocupar el WebView)
                         view?.loadUrl(target)                                   //Coje el link clickado (variable view) y lo carga
                         return true                                             //Devuelve True, indicando al WebView que no haga nada, que ya se ha encargado el controlador cargando el link
+                        */
                     }
 
                     override fun onPageStarted(                     //Metodo del WebViewClient que se ejecuta cuando el WebView empieza a cargar una pagina
@@ -127,6 +143,7 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                         super.onPageFinished(view, url)                             //Llama al comportamiento por defecto del WebViewClient con los parametros como inputs
                         canGoBack = view?.canGoBack() == true                       //Actualiza una vez mas por si acaso el historial cambia al terminar de cargarse la pagina
                         swipe.isRefreshing = false                                  //Si has llegado a esta pagina refresheando, al terminar de cargar la pagina, cambia el estado de refreshing a false para indicar que el refresh ha finalizado
+                        CookieManager.getInstance().flush()                         //Fuerza a escribir las cookies en el disco para que no te las vuelva a pedir
                     }
                 }
 
@@ -179,12 +196,13 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                                 }
                                 */
 
-                                override fun onPageStarted(v: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                                    // 1) Redirige la URL del popup a la WebView principal
-                                    if (url != null) view.loadUrl(url)
-                                    // 2) Limpia el child para evitar fugas y estados raros
-                                    try { destroy() } catch (_: Exception) {}
-                                    popupWebView = null
+                                override fun onPageStarted(                     //Metodo del WebViewClient que se ejecuta cuando el WebView empieza a cargar una pagina
+                                    v: WebView?,                                //WebView que esta cargando la pagina
+                                    url: String?,                               //Url de esta pagina
+                                    favicon: android.graphics.Bitmap?) {        //Icono de la pagina
+                                    if (url != null) view.loadUrl(url)          //Redirige la URL del popup a la WebView principal
+                                    try { destroy() } catch (_: Exception) {}   //Limpia el child para evitar fugas y estados raros
+                                    popupWebView = null                         //Pasa el valor de popupWebView de vuelta a null
                                 }
                                 /*
                                 override fun onPageStarted(                     //Metodo del WebViewClient que se ejecuta cuando el WebView empieza a cargar una pagina
@@ -202,8 +220,8 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
 
                                     super.onPageFinished(v, u)                          //Se llama a la implementacion por defecto
 
-                                    canGoBack = v?.canGoBack() == true                       //Actualiza una vez mas por si acaso el historial cambia al terminar de cargarse la pagina
-                                    swipe.isRefreshing = false                                  //Si has llegado a esta pagina refresheando, al terminar de cargar la pagina, cambia el estado de refreshing a false para indicar que el refresh ha finalizado
+                                    canGoBack = v?.canGoBack() == true                  //Actualiza una vez mas por si acaso el historial cambia al terminar de cargarse la pagina
+                                    swipe.isRefreshing = false                          //Si has llegado a esta pagina refresheando, al terminar de cargar la pagina, cambia el estado de refreshing a false para indicar que el refresh ha finalizado
 
 
                                 }
