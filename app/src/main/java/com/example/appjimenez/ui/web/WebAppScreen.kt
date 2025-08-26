@@ -98,7 +98,6 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                 overScrollMode = View.OVER_SCROLL_ALWAYS    //Muestra el efecto tipico cuando tratas de deslizar mas alla del limite de la pantalla (opcional)
 
 
-
                 webViewClient = object : WebViewClient() {  //Propiedad de un objeto WebView que establece el controlador del navegador, en este caso sera el objeto WebViewClient
                                                             //Todas las llamadas realcionadas con la navegacion, como abrir links, pasaran por este objeto
                                                             //Es un objeto que permite controlar las cosas relacionadas con la navegacion
@@ -109,19 +108,17 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                     ): Boolean {                                                //Situacion de verdadero falso
                                                                                 //Verdadero es que el objeto maneje la interaccion y falso que no haga nada y se las arregle el propio WebView
 
-                        val uri = request?.url ?: return false
-                        val scheme = uri.scheme ?: return false
+                        val uri = request?.url ?: return false                  //Trata de obtener la url, si no la consigue, devuelve False
+                        val scheme = uri.scheme ?: return false                 //Extrae la info de url
 
-                        // Deja que Chromium maneje la navegación normal (más rápido y correcto).
-                        if (scheme == "http" || scheme == "https") return false
+                        if (scheme == "http" || scheme == "https") return false //Si es una web normal directamente que se ocupe el WebView porque lo tiene facil
 
-                        // Maneja tú esquemas especiales.
-                        return try {
-                            val intent = Intent(Intent.ACTION_VIEW, uri)
-                            view?.context?.startActivity(intent)
-                            true
-                        } catch (_: Exception) {
-                            false
+                        return try {                                            //Si es un link especial, ya lo manjea el controlador
+                            val intent = Intent(Intent.ACTION_VIEW, uri)        //Trata de abrirla
+                            view?.context?.startActivity(intent)                //Se inicial la intencion de abrirla
+                            true                                                //Si funciona se devuelve True
+                        } catch (_: Exception) {                                //Si falla
+                            false                                               //Devuelve False
                         }
                         /*
                         val target = request?.url?.toString() ?: return false   //Coje la url y lo transforma en String, si fuera null, devuelve Falso (El controlador no hace nada y se debe ocupar el WebView)
@@ -179,6 +176,7 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                                 userAgentString = WebSettings.getDefaultUserAgent(context)          //Usa el User-Agent (identificacion del navegador) estandar de Android/Chrome, asi la web no te detecta como un navegador raro
                                 useWideViewPort = true                                              //Interpreta el viewport como en un navegador normal, no como uno fijo, es decir, coge la forma que le diga la pagina web
                                 loadWithOverviewMode = true                                         //Ajusta el contenido al ancho de la pantalla
+                                //offscreenPreRaster = true
                             }
 
                             setLayerType(View.LAYER_TYPE_HARDWARE, null)    //Fuerza el renderizado por GPU en lugar de por software (mejor rendimiento)
@@ -272,6 +270,8 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                     mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE //Permite cargar contenido mixto (HTTP dentro de HTTPS), en modo de compatibilidad
                     mediaPlaybackRequiresUserGesture = true                         //Permite abrir reproductores u otros medios solo mediante accion de usuario
                     setSupportMultipleWindows(true)                                 //Permite los popups
+                    useWideViewPort = true                                              //Interpreta el viewport como en un navegador normal, no como uno fijo, es decir, coge la forma que le diga la pagina web
+                    loadWithOverviewMode = true                                         //Ajusta el contenido al ancho de la pantalla
                     // (Opcional) user agent más “móvil” estándar si la web filtra WebViews
                     // userAgentString = WebSettings.getDefaultUserAgent(context)
                 }
