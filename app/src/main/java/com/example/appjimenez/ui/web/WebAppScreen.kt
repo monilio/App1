@@ -168,50 +168,47 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
 
                             setLayerType(View.LAYER_TYPE_HARDWARE, null)    //Fuerza el renderizado por GPU en lugar de por software (mejor rendimiento)
 
-                            webViewClient = object : WebViewClient() {
+                            webViewClient = object : WebViewClient() {              //Este es el cliente de naveegacion pero para el child (al igual que se hizo con el WebView padre)
+
                                 override fun shouldOverrideUrlLoading(
                                     v: WebView?,
                                     req: WebResourceRequest?
-                                ): Boolean {
-                                    //val t = req?.url?.toString() ?: return false
-                                    //v?.loadUrl(t)
-                                    return true
+                                ): Boolean {                                        //Lo ha hecho el controlador (True) o se lo deja al propio WebView (False)?
+                                    val t = req?.url?.toString() ?: return false    //Si es null el controlador no hace nada
+                                    v?.loadUrl(t)                                   //Si no es null, el controlador carga la url
+                                    return true                                     //Si ha cargado la url, devuelve True, indicando que ya se ha ocupado de tod0
                                 }
 
-                                override fun onPageFinished(v: WebView?, u: String?) {
-                                    super.onPageFinished(v, u)
-                                    // nada
+                                override fun onPageFinished(v: WebView?, u: String?) {  //Se ejecuta cuando termina de cargar la pagina
+                                    super.onPageFinished(v, u)                          //Se llama a la implementacion por defecto
                                 }
                             }
 
-                            webChromeClient = object : WebChromeClient() {
-                                // Permite que el sitio cierre el popup (window.close)
-                                override fun onCloseWindow(window: WebView?) {
-                                    try { popupWebView?.destroy() } catch (_: Exception) {}
-                                    popupWebView = null
+                            webChromeClient = object : WebChromeClient() {                      //Funciones avanzadas del navegador pero para el child
+
+                                override fun onCloseWindow(window: WebView?) {                  //Cuando se cierra esta ventana
+                                    try { popupWebView?.destroy() } catch (_: Exception) {}     //Se destruye el popupWebView para liberar memoria
+                                    popupWebView = null                                         //Pasa el valor de popupWebView a null al ya no haber nada
                                 }
                             }
                         }
 
-                        val transport = resultMsg.obj as WebView.WebViewTransport
-                        transport.webView = child
-                        resultMsg.sendToTarget()
+                        val transport = resultMsg.obj as WebView.WebViewTransport   //Dentro del sobre vacio que era el resultMsg se introduce el objeto a transportar
+                        transport.webView = child                                   //Este objeto es el child
+                        resultMsg.sendToTarget()                                    //El sobre se envia al WebView padre
 
-                        popupWebView = child // activar el Dialog
-                        return true
+                        popupWebView = child                                        //Se devuelve el valor a popupView de child
+                        return true                                                 //Se devuelve True, indicando que ya se ha gestionado esta ventana
                     }
 
-
-                    // (Opcional) Si la web usa geolocalización
-                    override fun onGeolocationPermissionsShowPrompt(
+                    override fun onGeolocationPermissionsShowPrompt(    //Habilita la geolocalización (opcional), ocurre cuando el WebView pide acceso a la localización usando JavaScript
                         origin: String?,                                //Dominio que solicita el permiso
-                        callback: GeolocationPermissions.Callback?      //Funcion que debes invocar para conceder/denegar
+                        callback: GeolocationPermissions.Callback?      //Funcion que debes invocar para conceder/denegar el permiso
                     ) {
-                        // Concedemos permiso solo para esta sesión (ajusta a tus necesidades/manifest)
-                        callback?.invoke(origin, true, false)
+                        callback?.invoke(origin, true, false)           //Si se ha pedido la ubicacion, se invoca la funcion que la permite
+                                                                        //Los inputs son el dominio que la pidio, True que indica que se concede y False que indica que no se recuerde esta decision si se cierra y vuelve a abrir la app
                     }
                 }
-
 
 
 
@@ -222,19 +219,18 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
                 settings.apply {    //El apply permite ponerlas todas una debajo de otra
-                    javaScriptEnabled = true                    //Habilita JavaScript
-                    domStorageEnabled = true                    //Habilita el DOM Storage API (localStorage/sessionStorage), usado por webs modernas
-                    databaseEnabled = true                      //Permite el uso de bases de datos web (HTML5 Web SQL)
-                    loadsImagesAutomatically = true             //Permite que las imágenes se carguen automaticamente
-                    cacheMode = WebSettings.LOAD_DEFAULT        //Establece como manejar el cache. LOAD_DEFAULT = usa el cache si esta disponible
-                    javaScriptCanOpenWindowsAutomatically = true    //Permite que JavaScript abra ventanas emergentes
+                    javaScriptEnabled = true                                        //Permite que la pagina ejecute codigo JavaScript
+                    domStorageEnabled = true                                        //Habilita el almacenamiento web (localStorage y sessionStorage)
+                    databaseEnabled = true                                          //Permite bases de datos web (HTML5 Web SQL)
+                    loadsImagesAutomatically = true                                 //Permite que las imágenes se carguen automaticamente
+                    cacheMode = WebSettings.LOAD_DEFAULT                            //Establece como manejar el cache. LOAD_DEFAULT = usa el cache si esta disponible
+                    javaScriptCanOpenWindowsAutomatically = true                    //Permite que JavaScript abra ventanas emergentes
                     mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE //Permite cargar contenido mixto (HTTP dentro de HTTPS), en modo de compatibilidad
-                    mediaPlaybackRequiresUserGesture = true     //Permite abrir reproductores u otros medios
-                    setSupportMultipleWindows(true)     //Permite los popups
+                    mediaPlaybackRequiresUserGesture = true                         //Permite abrir reproductores u otros medios solo mediante accion de usuario
+                    setSupportMultipleWindows(true)                                 //Permite los popups
                     // (Opcional) user agent más “móvil” estándar si la web filtra WebViews
                     // userAgentString = WebSettings.getDefaultUserAgent(context)
                 }
-
 
 
                 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -242,7 +238,7 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
                 // Habilita cookies (algunas webs las requieren)
-                CookieManager.getInstance().setAcceptCookie(true)                   //Acepta las cookies automaticamente
+                CookieManager.getInstance().setAcceptCookie(true)                   //Habilita las cookies en general
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)  //Habilita cookies de terceros en el WebView
 
 
@@ -251,41 +247,39 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
                 // Render por HW (suele estar ya activo)
-                setLayerType(View.LAYER_TYPE_HARDWARE, null)    //Cambia el modo de renderizado de la vista, fuerza renderizado por GPU en lugar de software
+                setLayerType(View.LAYER_TYPE_HARDWARE, null)    //Fuerza el renderizado a traves de la GPU para aumentar el rendimiento de este
 
 
                 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
                 //LOAD
                 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-                loadUrl(url)        //Carga el url (Esta es la funcion principal)
+                loadUrl(url)    //Carga el url (Esta es la funcion principal)
             }
 
-            // 🔑 Para WebView, el SwipeRefreshLayout no siempre sabe si puede “scrollear arriba”.
-            // Con este callback le decimos: “bloquea el refresh si el WebView NO está en el tope”.
-            swipe.setOnChildScrollUpCallback { _, _ ->
-                (web.scrollY > 0)
+
+            swipe.setOnChildScrollUpCallback { _, _ ->  //Si el child todavia puede desplazarse hacia arriba, no hace el refresh
+                (web.scrollY > 0)                       //True si el WebView no esta en el tope (Swiperefresh bloqueado), False si si esta en el tope
             }
 
             // Acción de refresco (pull-to-refresh)
-            swipe.setOnRefreshListener {
-                val current = web.url ?: url
-                web.loadUrl(current) // o web.reload()
+            swipe.setOnRefreshListener {        //Lo que ocurre cuando haces el refresh
+                val current = web.url ?: url    //Mete en una variable local la url acutal
+                web.loadUrl(current)            //Carga la variable actual, haciendo asi el refresh
             }
 
             // Móntalo
-            swipe.addView(
-                web,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
+            swipe.addView(                                  //Swipe es un ViewGroup y con addView añade un hijo al contenedor
+                web,                                        //web es el hijo añadido
+                ViewGroup.LayoutParams(                     //Se pasan los parametros de diseño
+                    ViewGroup.LayoutParams.MATCH_PARENT,    //En el ancho, ocupa tod0 el contenedor
+                    ViewGroup.LayoutParams.MATCH_PARENT     //En el alto, ocupa tod0 el contenedor
                 )
             )
-            swipe
+            swipe   //Valor de retorno que devuelve un View
         },
-        update = { view ->
-            // 'it' es el SwipeRefreshLayout
-            canGoBack = webViewRef?.canGoBack() == true
+        update = { view ->                                  //Mientras que factory solo se ejecuta una vez, update se ejecuta cada vez que se recompone el AndroidView
+            canGoBack = webViewRef?.canGoBack() == true     //Asegura que en cada recomposicion al avanzar se cambi el canGoBack a True para indicar que puede volver
         }
     )
 }
