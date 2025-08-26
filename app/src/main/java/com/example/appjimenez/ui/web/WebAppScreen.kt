@@ -26,6 +26,8 @@ import android.view.ViewGroup
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import android.net.Uri
 import android.content.Intent
+import android.os.Build
+import android.webkit.WebResourceError
 
 @Composable
 fun WebAppScreen(url: String) {     //Toma de input un valor String que será el url o link al que se acceda al iniciar la app
@@ -45,7 +47,6 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
 
     var popupWebView by remember { mutableStateOf<WebView?>(null) }     //Igual que la anterior, pero con una WebView hija (los popups)
     var canGoBack by remember { mutableStateOf(false) }                 //Guarda en una variable local booleana que representa si hay una pagina a la que volver
-
 
 
 
@@ -142,6 +143,38 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                         swipe.isRefreshing = false                                  //Si has llegado a esta pagina refresheando, al terminar de cargar la pagina, cambia el estado de refreshing a false para indicar que el refresh ha finalizado
                         CookieManager.getInstance().flush()                         //Fuerza a escribir las cookies en el disco para que no te las vuelva a pedir
                     }
+
+                    override fun onReceivedError(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                        error: WebResourceError?
+                    ) {
+                        // Solo para el frame principal (evita cambiar la página por fallos de iframes/anuncios)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            if (request?.isForMainFrame == true) {
+                                view?.loadUrl("file:///android_asset/error.html")
+                            }
+                        } else {
+                            // En API < 23 no existe isForMainFrame en request; si llega aquí, tratamos como principal.
+                            view?.loadUrl("file:///android_asset/error.html")
+                        }
+                    }
+
+                    override fun onReceivedHttpError(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                        errorResponse: android.webkit.WebResourceResponse?
+                    ) {
+                        // Si el error HTTP afecta al frame principal (404/500/etc.), mostramos también la página custom.
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            if (request?.isForMainFrame == true) {
+                                view?.loadUrl("file:///android_asset/error.html")
+                            }
+                        }
+                    }
+
+
+
                 }
 
 
