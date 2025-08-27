@@ -1,8 +1,6 @@
 package com.example.appjimenez.ui.web
 
-import android.R.attr.overScrollMode
 import android.app.Activity
-import android.content.Context
 import android.os.Message
 import android.view.View
 import android.webkit.CookieManager
@@ -25,29 +23,66 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import android.view.ViewGroup
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import android.net.Uri
 import android.content.Intent
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.os.Build
-import android.provider.SyncStateContract.Helpers.update
-import android.util.Log
 import android.webkit.WebResourceError
 import android.webkit.JavascriptInterface
 
 
-import android.webkit.*
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//DECLARACION DE VARIABLES EXTERNAS
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-private const val ERROR_URL = "file:///android_asset/error.html"
-private fun isErrorAsset(url: String?): Boolean = url?.startsWith(ERROR_URL) == true
+private const val ERROR_URL = "file:///android_asset/error.html"    //Ruta hacia el html con la pantalla de error de conexion
+
+
+private fun isErrorAsset(url: String?):     //El prefijo is indica que sera una funcion booleana. El input es un string que puede ser null
+                                            //Esta funcion nos dira si el link lleva a un error
+        Boolean = url == null               //Comprueba si url es null y da un True or False al respecto
+        || url == "about:blank"             //O comprueba si es un link a una pagina en blanco
+        || url.startsWith(ERROR_URL)        //O comprueba si el link es a la pantalla de error de conexion
+
+
+private fun WebView.goBackSkippingErrorsAndDuplicates(      //Funcion de extension sobre el WebView (se puede meter en el WebView)
+    isError: (String?) -> Boolean                           //Esta funcion recibe un String y devuelve un Boolean
+): Boolean {                                                //Indica que devuelve un Boolean
+    val list = copyBackForwardList() ?: return false        //Obtiene el historial de navegacion, si fuera nulo, devuelve False
+    val curIndex = list.currentIndex                        //Obtiene el indice actual dentro del historial de navegacion
+    val curUrl = list.currentItem?.url                      //Obtiene el url asociado al indice actual dentro del historial de navegacion
+
+    var target = curIndex - 1                               //Obtiene el indice anterior al actual dentro del historial de navegacion
+    while (target >= 0) {                                   //
+        val item = list.getItemAtIndex(target)
+        val url = item?.url
+
+        val isDuplicateOfCurrent = (url == curUrl)
+        val isJunk = isError(url) || url == "about:blank"
+
+        // Elegimos el primer destino que NO sea error/blank y NO sea la misma URL
+        if (!isJunk && !isDuplicateOfCurrent) break
+        target--
+    }
+
+    return if (target >= 0) {
+        goBackOrForward(target - curIndex) // delta negativo
+        true
+    } else {
+        false
+    }
+}
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//COMPOSABLE
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 @Composable
 fun WebAppScreen(url: String) {     //Toma de input un valor String que será el url o link al que se acceda al iniciar la app
 
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    //DECLARACION DE VARIABLES
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //declaracion de variables internas
 
     val activity = (LocalActivity.current as? Activity)                 //Introduce la Activity en una variable local
                                                                         //Una Activity es una pantalla de la aplicacion
@@ -63,13 +98,14 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
     //var lastTriedUrl by remember { mutableStateOf<String?>(null) }      //Ultima URL que intentamos cargar
     //var isShowingError by remember { mutableStateOf(false) }            //¿Estamos mostrando error.html?
 
+    val skipErrorsOnBack = java.util.concurrent.atomic.AtomicBoolean(false)
 
     var lastFailedUrlLocal: String? = null
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //MANEJO BOTON ATRAS
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+    /*
     BackHandler(enabled = true) {                                           //Funcion que establece el uso de boton de atras del movil
         when {                                                              //Bucle when para que siempre este activo y atento para ver si ocurre lo de dentro de las llaves
             popupWebView != null -> {                                       //Si hay un popup abierto
@@ -80,8 +116,21 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
             else -> activity?.finish()                                      //Si no habia ni popup ni pagina anterior, cierra la actividad (la pantalla) y por tanto cierra la app
         }
     }
+    */
 
-
+    BackHandler(enabled = true) {
+        when {
+            popupWebView != null -> {
+                try { popupWebView?.destroy() } catch (_: Exception) {}
+                popupWebView = null
+            }
+            webViewRef?.canGoBack() == true -> {
+                val jumped = webViewRef!!.goBackSkippingErrorsAndDuplicates(::isErrorAsset)
+                if (!jumped) webViewRef!!.goBack()
+            }
+            else -> activity?.finish()
+        }
+    }
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //DEFINICION DEL ANDROIDVIEW
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -160,6 +209,18 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
 
                 override fun onPageFinished(view: WebView?, url: String?) {     //Metodo del WebViewClient que se ejecuta cuando la pagina termina de cargarse completamente
                     super.onPageFinished(view, url)                             //Llama al comportamiento por defecto del WebViewClient con los parametros como inputs
+
+                    // si estamos “saltando errores”, sigue yendo hacia atrás hasta caer en una URL buena
+                    if (skipErrorsOnBack.get()) {
+                        val isError = url == null || url == "about:blank" || url.startsWith(ERROR_URL)
+                        if (isError && view?.canGoBack() == true) {
+                            view.goBack()
+                            return
+                        } else {
+                            skipErrorsOnBack.set(false) // hemos llegado a una página “real” o no podemos seguir
+                        }
+                    }
+
                     canGoBack = view?.canGoBack() == true                       //Actualiza una vez mas por si acaso el historial cambia al terminar de cargarse la pagina
                     swipe.isRefreshing = false                                  //Si has llegado a esta pagina refresheando, al terminar de cargar la pagina, cambia el estado de refreshing a false para indicar que el refresh ha finalizado
                     CookieManager.getInstance().flush()                         //Fuerza a escribir las cookies en el disco para que no te las vuelva a pedir
@@ -332,8 +393,7 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                 setSupportMultipleWindows(true)                                 //Permite los popups
                 useWideViewPort = true                                              //Interpreta el viewport como en un navegador normal, no como uno fijo, es decir, coge la forma que le diga la pagina web
                 loadWithOverviewMode = true                                         //Ajusta el contenido al ancho de la pantalla
-                // (Opcional) user agent más “móvil” estándar si la web filtra WebViews
-                // userAgentString = WebSettings.getDefaultUserAgent(context)
+
             }
 
 
@@ -389,14 +449,6 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                 (web.scrollY > 0)                       //True si el WebView no esta en el tope (Swiperefresh bloqueado), False si si esta en el tope
             }
 
-            /*
-            // Acción de refresco (pull-to-refresh)
-            swipe.setOnRefreshListener {        //Lo que ocurre cuando haces el refresh
-                val current = web.url ?: url    //Mete en una variable local la url acutal
-                web.loadUrl(current)            //Carga la variable actual, haciendo asi el refresh
-            }
-            */
-
 
 
 
@@ -404,19 +456,8 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
 
             swipe.setOnRefreshListener {
 
-                // Ajusta caché según conectividad (opcional pero recomendable)
-                /*
-                val online = isOnline(context)
-                web.settings.cacheMode = if (online) {
-                    WebSettings.LOAD_DEFAULT
-                } else {
-                    WebSettings.LOAD_CACHE_ELSE_NETWORK
-                }
-                */
 
-                // Si estamos mostrando el error, reintenta la última URL real
-
-                val current = web.url
+                val current = web.url                // Si estamos mostrando el error, reintenta la última URL real
                 val target = if (isErrorAsset(current)) {
                     // Si estás en la pantalla de error, reintenta lo que falló
                     lastFailedUrlLocal
@@ -449,19 +490,3 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
         }
     )
 }
-
-/*
-@Suppress("DEPRECATION")
-private fun isOnline(context: Context): Boolean {
-    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        val nw = cm.activeNetwork ?: return false
-        val caps = cm.getNetworkCapabilities(nw) ?: return false
-        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-    } else {
-        val info = cm.activeNetworkInfo
-        info != null && info.isConnected
-    }
-}
-
- */
