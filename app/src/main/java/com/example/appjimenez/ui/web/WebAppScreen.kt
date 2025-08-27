@@ -2,6 +2,7 @@ package com.example.appjimenez.ui.web
 
 import android.R.attr.overScrollMode
 import android.app.Activity
+import android.content.Context
 import android.os.Message
 import android.view.View
 import android.webkit.CookieManager
@@ -26,8 +27,19 @@ import android.view.ViewGroup
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import android.net.Uri
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
+import android.provider.SyncStateContract.Helpers.update
+import android.util.Log
 import android.webkit.WebResourceError
+import android.webkit.JavascriptInterface
+
+
+import android.webkit.*
+
+private const val ERROR_URL = "file:///android_asset/error.html"
+private fun isErrorAsset(url: String?): Boolean = url?.startsWith(ERROR_URL) == true
 
 @Composable
 fun WebAppScreen(url: String) {     //Toma de input un valor String que será el url o link al que se acceda al iniciar la app
@@ -48,8 +60,11 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
     var popupWebView by remember { mutableStateOf<WebView?>(null) }     //Igual que la anterior, pero con una WebView hija (los popups)
     var canGoBack by remember { mutableStateOf(false) }                 //Guarda en una variable local booleana que representa si hay una pagina a la que volver
 
+    //var lastTriedUrl by remember { mutableStateOf<String?>(null) }      //Ultima URL que intentamos cargar
+    //var isShowingError by remember { mutableStateOf(false) }            //¿Estamos mostrando error.html?
 
 
+    var lastFailedUrlLocal: String? = null
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //MANEJO BOTON ATRAS
@@ -94,255 +109,329 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
 
         val web = WebView(context).apply {                  //Crea un nuevo WebView y le pasa el contexto obligatorio, a su vez lo guarda en una variable local llamada web
                                                             //Este es un objeto que usara una url o link para mostrar una pagina web en al AndroidView
+            val initialUrl = url // <-- captura el parámetro del Composable con otro nombre
+            val wv = this
+            webViewRef = this                           //Guarda la referencia a la WebView en la variable local que definimos anteriormente
+            overScrollMode = View.OVER_SCROLL_ALWAYS    //Muestra el efecto tipico cuando tratas de deslizar mas alla del limite de la pantalla (opcional)
 
-                webViewRef = this                           //Guarda la referencia a la WebView en la variable local que definimos anteriormente
-                overScrollMode = View.OVER_SCROLL_ALWAYS    //Muestra el efecto tipico cuando tratas de deslizar mas alla del limite de la pantalla (opcional)
 
+            webViewClient = object : WebViewClient() {  //Propiedad de un objeto WebView que establece el controlador del navegador, en este caso sera el objeto WebViewClient
+                                                        //Todas las llamadas realcionadas con la navegacion, como abrir links, pasaran por este objeto
+                                                        //Es un objeto que permite controlar las cosas relacionadas con la navegacion
 
-                webViewClient = object : WebViewClient() {  //Propiedad de un objeto WebView que establece el controlador del navegador, en este caso sera el objeto WebViewClient
-                                                            //Todas las llamadas realcionadas con la navegacion, como abrir links, pasaran por este objeto
-                                                            //Es un objeto que permite controlar las cosas relacionadas con la navegacion
+                override fun shouldOverrideUrlLoading(                      //Se sobreescribe el metodo de WebViewClient si se da a un link dentro de la pagina
+                    view: WebView?,                                         //La pagina que se esta intentando cargar
+                    request: WebResourceRequest?                            //Detalles de la nueva pagina, como el link y otra info
+                ): Boolean {                                                //Situacion de verdadero falso
+                                                                            //Verdadero es que el objeto maneje la interaccion y falso que no haga nada y se las arregle el propio WebView
 
-                    override fun shouldOverrideUrlLoading(                      //Se sobreescribe el metodo de WebViewClient si se da a un link dentro de la pagina
-                        view: WebView?,                                         //La pagina que se esta intentando cargar
-                        request: WebResourceRequest?                            //Detalles de la nueva pagina, como el link y otra info
-                    ): Boolean {                                                //Situacion de verdadero falso
-                                                                                //Verdadero es que el objeto maneje la interaccion y falso que no haga nada y se las arregle el propio WebView
+                    val uri = request?.url ?: return false                  //Trata de obtener la url, si no la consigue, devuelve False
+                    val scheme = uri.scheme ?: return false                 //Extrae la info de url
 
-                        val uri = request?.url ?: return false                  //Trata de obtener la url, si no la consigue, devuelve False
-                        val scheme = uri.scheme ?: return false                 //Extrae la info de url
+                    if (scheme == "http" || scheme == "https") return false //Si es una web normal directamente que se ocupe el WebView porque lo tiene facil
 
-                        if (scheme == "http" || scheme == "https") return false //Si es una web normal directamente que se ocupe el WebView porque lo tiene facil
-
-                        return try {                                            //Si es un link especial, ya lo manjea el controlador
-                            val intent = Intent(Intent.ACTION_VIEW, uri)        //Trata de abrirla
-                            view?.context?.startActivity(intent)                //Se inicial la intencion de abrirla
-                            true                                                //Si funciona se devuelve True
-                        } catch (_: Exception) {                                //Si falla
-                            false                                               //Devuelve False
-                        }
-                        /*
-                        val target = request?.url?.toString() ?: return false   //Coje la url y lo transforma en String, si fuera null, devuelve Falso (El controlador no hace nada y se debe ocupar el WebView)
-                        view?.loadUrl(target)                                   //Coje el link clickado (variable view) y lo carga
-                        return true                                             //Devuelve True, indicando al WebView que no haga nada, que ya se ha encargado el controlador cargando el link
-                        */
+                    return try {                                            //Si es un link especial, ya lo manjea el controlador
+                        val intent = Intent(Intent.ACTION_VIEW, uri)        //Trata de abrirla
+                        view?.context?.startActivity(intent)                //Se inicial la intencion de abrirla
+                        true                                                //Si funciona se devuelve True
+                    } catch (_: Exception) {                                //Si falla
+                        false                                               //Devuelve False
                     }
-
-                    override fun onPageStarted(                     //Metodo del WebViewClient que se ejecuta cuando el WebView empieza a cargar una pagina
-                        view: WebView?,                             //WebView que esta cargando la pagina
-                        url: String?,                               //Url de esta pagina
-                        favicon: android.graphics.Bitmap?) {        //Icono de la pagina
-
-                        super.onPageStarted(view, url, favicon)     //LLama al comportamiento por defecto del WebViewClient con los parametros como inputs
-                        canGoBack = view?.canGoBack() == true       //Actualiza el estado canGoBack, indicando que si se ha cargado una nueva pagina, habra una a la que volver
-                    }
-
-                    override fun onPageFinished(view: WebView?, url: String?) {     //Metodo del WebViewClient que se ejecuta cuando la pagina termina de cargarse completamente
-                        super.onPageFinished(view, url)                             //Llama al comportamiento por defecto del WebViewClient con los parametros como inputs
-                        canGoBack = view?.canGoBack() == true                       //Actualiza una vez mas por si acaso el historial cambia al terminar de cargarse la pagina
-                        swipe.isRefreshing = false                                  //Si has llegado a esta pagina refresheando, al terminar de cargar la pagina, cambia el estado de refreshing a false para indicar que el refresh ha finalizado
-                        CookieManager.getInstance().flush()                         //Fuerza a escribir las cookies en el disco para que no te las vuelva a pedir
-                    }
-
-                    override fun onReceivedError(
-                        view: WebView?,
-                        request: WebResourceRequest?,
-                        error: WebResourceError?
-                    ) {
-                        // Solo para el frame principal (evita cambiar la página por fallos de iframes/anuncios)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                            if (request?.isForMainFrame == true) {
-                                view?.loadUrl("file:///android_asset/error.html")
-                            }
-                        } else {
-                            // En API < 23 no existe isForMainFrame en request; si llega aquí, tratamos como principal.
-                            view?.loadUrl("file:///android_asset/error.html")
-                        }
-                    }
-
-                    override fun onReceivedHttpError(
-                        view: WebView?,
-                        request: WebResourceRequest?,
-                        errorResponse: android.webkit.WebResourceResponse?
-                    ) {
-                        // Si el error HTTP afecta al frame principal (404/500/etc.), mostramos también la página custom.
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                            if (request?.isForMainFrame == true) {
-                                view?.loadUrl("file:///android_asset/error.html")
-                            }
-                        }
-                    }
-
-
-
+                    /*
+                    val target = request?.url?.toString() ?: return false   //Coje la url y lo transforma en String, si fuera null, devuelve Falso (El controlador no hace nada y se debe ocupar el WebView)
+                    view?.loadUrl(target)                                   //Coje el link clickado (variable view) y lo carga
+                    return true                                             //Devuelve True, indicando al WebView que no haga nada, que ya se ha encargado el controlador cargando el link
+                    */
                 }
 
+                override fun onPageStarted(                     //Metodo del WebViewClient que se ejecuta cuando el WebView empieza a cargar una pagina
+                    view: WebView?,                             //WebView que esta cargando la pagina
+                    url: String?,                               //Url de esta pagina
+                    favicon: android.graphics.Bitmap?) {        //Icono de la pagina
 
+                    super.onPageStarted(view, url, favicon)     //LLama al comportamiento por defecto del WebViewClient con los parametros como inputs
 
-
-                webChromeClient = object : WebChromeClient() {  //Otra propiedad del WebView, parecida al webViewClient, pero con una funcion diferente
-                                                                //El otro controlaba la navegacion, este controla funciones avanzadas del navegador, como popus, JavaScript o geolocalizacion
-                                                                //Una vez toma como valor un objeto integro conocido como WebChromeClient
-
-                    override fun onCreateWindow(    //Metodo que se llama al tratar de abrir una ventana nueva
-                                                    //Por defecto WebView no abre ventanas nuevas
-                        view: WebView?,             //WebView principal que pidio abrir la ventana
-                        isDialog: Boolean,          //Boolean que indica si la ventana abierta deberia mostrarse como un dialogo modal ()??
-                        isUserGesture: Boolean,     //True si fuer por accion del usuario, False si se lanzo automaticamente
-                        resultMsg: Message?         //Mensaje especial que permite transportar la nueva WebView creada de vuelta al sistema, es decir, el sobre en el que va la nueva ventana al entregarla al sistema
-                    ): Boolean {                    //True es ya se ha gestionado la creacion de la nueva ventana, False es no se gestiono e ingora el intento de abrirla
-                        if (view == null || resultMsg == null) return false     //Si el view principal es nulo o no hay forma de entregar esta nueva ventana al sistema, toma False e ignora el intento
-
-                        val child = WebView(view.context).apply {               //Crea un nuevo objeto WebView usando el mismo context que el padre y lo guarda en una variable llamada child (que representa el popup)
-                                                                                //Es decir, fabrica un navegador independiente dentro de tu app exclusivo para la ventana emergente
-
-                            settings.apply {                                                        //Comienza la lista de ajustes de child
-                                javaScriptEnabled = true                                            //Permite que la pagina ejecute codigo JavaScript
-                                domStorageEnabled = true                                            //Habilita el almacenamiento web (localStorage y sessionStorage)
-                                databaseEnabled = true                                              //Permite bases de datos web (HTML5 Web SQL)
-                                loadsImagesAutomatically = true                                     //Las imagenes se cargan sin intervencion extra
-                                cacheMode = WebSettings.LOAD_DEFAULT                                //Usa el cache si esta disponible
-                                javaScriptCanOpenWindowsAutomatically = true                        //Permite que el propio JavaScript cree popups
-                                setSupportMultipleWindows(true)                                     //Habilita multiples ventanas dentro de este WebView
-                                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE     //Permite mezclar HTTP y HTTPS
-                                mediaPlaybackRequiresUserGesture = true                             //Evite el autoplay y exige la accion del usuario para reproducir medios
-                                userAgentString = WebSettings.getDefaultUserAgent(context)          //Usa el User-Agent (identificacion del navegador) estandar de Android/Chrome, asi la web no te detecta como un navegador raro
-                                useWideViewPort = true                                              //Interpreta el viewport como en un navegador normal, no como uno fijo, es decir, coge la forma que le diga la pagina web
-                                loadWithOverviewMode = true                                         //Ajusta el contenido al ancho de la pantalla
-                                //offscreenPreRaster = true
-                            }
-
-                            setLayerType(View.LAYER_TYPE_HARDWARE, null)    //Fuerza el renderizado por GPU en lugar de por software (mejor rendimiento)
-
-                            webViewClient = object : WebViewClient() {              //Este es el cliente de naveegacion pero para el child (al igual que se hizo con el WebView padre)
-
-                                /*
-                                override fun shouldOverrideUrlLoading(
-                                    v: WebView?,
-                                    req: WebResourceRequest?
-                                ): Boolean {                                        //Lo ha hecho el controlador (True) o se lo deja al propio WebView (False)?
-                                    val t = req?.url?.toString() ?: return false    //Si es null el controlador no hace nada
-                                    v?.loadUrl(t)                                   //Si no es null, el controlador carga la url
-                                    return true                                     //Si ha cargado la url, devuelve True, indicando que ya se ha ocupado de tod0
-                                }
-                                */
-
-                                override fun onPageStarted(                     //Metodo del WebViewClient que se ejecuta cuando el WebView empieza a cargar una pagina
-                                    v: WebView?,                                //WebView que esta cargando la pagina
-                                    url: String?,                               //Url de esta pagina
-                                    favicon: android.graphics.Bitmap?) {        //Icono de la pagina
-                                    if (url != null) view.loadUrl(url)          //Redirige la URL del popup a la WebView principal
-                                    try { destroy() } catch (_: Exception) {}   //Limpia el child para evitar fugas y estados raros
-                                    popupWebView = null                         //Pasa el valor de popupWebView de vuelta a null
-                                }
-                                /*
-                                override fun onPageStarted(                     //Metodo del WebViewClient que se ejecuta cuando el WebView empieza a cargar una pagina
-                                    v: WebView?,                             //WebView que esta cargando la pagina
-                                    url: String?,                               //Url de esta pagina
-                                    favicon: android.graphics.Bitmap?) {        //Icono de la pagina
-
-                                    super.onPageStarted(v, url, favicon)     //LLama al comportamiento por defecto del WebViewClient con los parametros como inputs
-                                    canGoBack = v?.canGoBack() == true       //Actualiza el estado canGoBack, indicando que si se ha cargado una nueva pagina, habra una a la que volver
-                                }
-                                */
-
-
-                                override fun onPageFinished(v: WebView?, u: String?) {  //Se ejecuta cuando termina de cargar la pagina
-
-                                    super.onPageFinished(v, u)                          //Se llama a la implementacion por defecto
-
-                                    canGoBack = v?.canGoBack() == true                  //Actualiza una vez mas por si acaso el historial cambia al terminar de cargarse la pagina
-                                    swipe.isRefreshing = false                          //Si has llegado a esta pagina refresheando, al terminar de cargar la pagina, cambia el estado de refreshing a false para indicar que el refresh ha finalizado
-
-
-                                }
-
-                            }
-
-                            webChromeClient = object : WebChromeClient() {                      //Funciones avanzadas del navegador pero para el child
-
-                                override fun onCloseWindow(window: WebView?) {                  //Cuando se cierra esta ventana
-                                    try { popupWebView?.destroy() } catch (_: Exception) {}     //Se destruye el popupWebView para liberar memoria
-                                    popupWebView = null                                         //Pasa el valor de popupWebView a null al ya no haber nada
-                                }
-                            }
-                        }
-
-                        val transport = resultMsg.obj as WebView.WebViewTransport   //Dentro del sobre vacio que era el resultMsg se introduce el objeto a transportar
-                        transport.webView = child                                   //Este objeto es el child
-                        resultMsg.sendToTarget()                                    //El sobre se envia al WebView padre
-
-                        //popupWebView = child                                        //Se devuelve el valor a popupView de child
-                        return true                                                 //Se devuelve True, indicando que ya se ha gestionado esta ventana
+                    if (url != null && !isErrorAsset(url)) {
+                        lastFailedUrlLocal = url
                     }
 
-                    override fun onGeolocationPermissionsShowPrompt(    //Habilita la geolocalización (opcional), ocurre cuando el WebView pide acceso a la localización usando JavaScript
-                        origin: String?,                                //Dominio que solicita el permiso
-                        callback: GeolocationPermissions.Callback?      //Funcion que debes invocar para conceder/denegar el permiso
-                    ) {
-                        callback?.invoke(origin, true, false)           //Si se ha pedido la ubicacion, se invoca la funcion que la permite
-                                                                        //Los inputs son el dominio que la pidio, True que indica que se concede y False que indica que no se recuerde esta decision si se cierra y vuelve a abrir la app
+                    canGoBack = view?.canGoBack() == true       //Actualiza el estado canGoBack, indicando que si se ha cargado una nueva pagina, habra una a la que volver
+                }
+
+                override fun onPageFinished(view: WebView?, url: String?) {     //Metodo del WebViewClient que se ejecuta cuando la pagina termina de cargarse completamente
+                    super.onPageFinished(view, url)                             //Llama al comportamiento por defecto del WebViewClient con los parametros como inputs
+                    canGoBack = view?.canGoBack() == true                       //Actualiza una vez mas por si acaso el historial cambia al terminar de cargarse la pagina
+                    swipe.isRefreshing = false                                  //Si has llegado a esta pagina refresheando, al terminar de cargar la pagina, cambia el estado de refreshing a false para indicar que el refresh ha finalizado
+                    CookieManager.getInstance().flush()                         //Fuerza a escribir las cookies en el disco para que no te las vuelva a pedir
+                }
+
+                override fun onReceivedError(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                    error: WebResourceError?
+                ) {
+                    // Solo para el frame principal (evita cambiar la página por fallos de iframes/anuncios)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        if (request?.isForMainFrame == true) {
+                            // guarda la URL que falló
+                            lastFailedUrlLocal  = request.url?.toString()
+                            view?.loadUrl(ERROR_URL)
+
+                        }
+                    } else {
+                        view?.loadUrl(ERROR_URL)
+
+                    }
+                }
+
+                override fun onReceivedHttpError(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                    errorResponse: android.webkit.WebResourceResponse?
+                ) {
+                    // Si el error HTTP afecta al frame principal (404/500/etc.), mostramos también la página custom.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        if (request?.isForMainFrame == true) {
+                            lastFailedUrlLocal  = request.url?.toString()
+                            lastFailedUrlLocal = request.url?.toString()
+                            view?.loadUrl(ERROR_URL)
+
+                        }
                     }
                 }
 
 
 
-
-
-                /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                //AJUSTES
-                /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-                settings.apply {    //El apply permite ponerlas todas una debajo de otra
-                    javaScriptEnabled = true                                        //Permite que la pagina ejecute codigo JavaScript
-                    domStorageEnabled = true                                        //Habilita el almacenamiento web (localStorage y sessionStorage)
-                    databaseEnabled = true                                          //Permite bases de datos web (HTML5 Web SQL)
-                    loadsImagesAutomatically = true                                 //Permite que las imágenes se carguen automaticamente
-                    cacheMode = WebSettings.LOAD_DEFAULT                            //Establece como manejar el cache. LOAD_DEFAULT = usa el cache si esta disponible
-                    javaScriptCanOpenWindowsAutomatically = true                    //Permite que JavaScript abra ventanas emergentes
-                    mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE //Permite cargar contenido mixto (HTTP dentro de HTTPS), en modo de compatibilidad
-                    mediaPlaybackRequiresUserGesture = true                         //Permite abrir reproductores u otros medios solo mediante accion de usuario
-                    setSupportMultipleWindows(true)                                 //Permite los popups
-                    useWideViewPort = true                                              //Interpreta el viewport como en un navegador normal, no como uno fijo, es decir, coge la forma que le diga la pagina web
-                    loadWithOverviewMode = true                                         //Ajusta el contenido al ancho de la pantalla
-                    // (Opcional) user agent más “móvil” estándar si la web filtra WebViews
-                    // userAgentString = WebSettings.getDefaultUserAgent(context)
-                }
-
-
-                /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                //COOKIES
-                /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-                // Habilita cookies (algunas webs las requieren)
-                CookieManager.getInstance().setAcceptCookie(true)                   //Habilita las cookies en general
-                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)  //Habilita cookies de terceros en el WebView
-
-
-                /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                //RENDER
-                /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-                // Render por HW (suele estar ya activo)
-                setLayerType(View.LAYER_TYPE_HARDWARE, null)    //Fuerza el renderizado a traves de la GPU para aumentar el rendimiento de este
-
-
-                /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                //LOAD
-                /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-                loadUrl(url)    //Carga el url (Esta es la funcion principal)
             }
+
+
+
+
+            webChromeClient = object : WebChromeClient() {  //Otra propiedad del WebView, parecida al webViewClient, pero con una funcion diferente
+                                                            //El otro controlaba la navegacion, este controla funciones avanzadas del navegador, como popus, JavaScript o geolocalizacion
+                                                            //Una vez toma como valor un objeto integro conocido como WebChromeClient
+
+                override fun onCreateWindow(    //Metodo que se llama al tratar de abrir una ventana nueva
+                                                //Por defecto WebView no abre ventanas nuevas
+                    view: WebView?,             //WebView principal que pidio abrir la ventana
+                    isDialog: Boolean,          //Boolean que indica si la ventana abierta deberia mostrarse como un dialogo modal ()??
+                    isUserGesture: Boolean,     //True si fuer por accion del usuario, False si se lanzo automaticamente
+                    resultMsg: Message?         //Mensaje especial que permite transportar la nueva WebView creada de vuelta al sistema, es decir, el sobre en el que va la nueva ventana al entregarla al sistema
+                ): Boolean {                    //True es ya se ha gestionado la creacion de la nueva ventana, False es no se gestiono e ingora el intento de abrirla
+                    if (view == null || resultMsg == null) return false     //Si el view principal es nulo o no hay forma de entregar esta nueva ventana al sistema, toma False e ignora el intento
+
+                    val child = WebView(view.context).apply {               //Crea un nuevo objeto WebView usando el mismo context que el padre y lo guarda en una variable llamada child (que representa el popup)
+                                                                            //Es decir, fabrica un navegador independiente dentro de tu app exclusivo para la ventana emergente
+
+                        settings.apply {                                                        //Comienza la lista de ajustes de child
+                            javaScriptEnabled = true                                            //Permite que la pagina ejecute codigo JavaScript
+                            domStorageEnabled = true                                            //Habilita el almacenamiento web (localStorage y sessionStorage)
+                            databaseEnabled = true                                              //Permite bases de datos web (HTML5 Web SQL)
+                            loadsImagesAutomatically = true                                     //Las imagenes se cargan sin intervencion extra
+                            cacheMode = WebSettings.LOAD_DEFAULT                                //Usa el cache si esta disponible
+                            javaScriptCanOpenWindowsAutomatically = true                        //Permite que el propio JavaScript cree popups
+                            setSupportMultipleWindows(true)                                     //Habilita multiples ventanas dentro de este WebView
+                            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE     //Permite mezclar HTTP y HTTPS
+                            mediaPlaybackRequiresUserGesture = true                             //Evite el autoplay y exige la accion del usuario para reproducir medios
+                            userAgentString = WebSettings.getDefaultUserAgent(context)          //Usa el User-Agent (identificacion del navegador) estandar de Android/Chrome, asi la web no te detecta como un navegador raro
+                            useWideViewPort = true                                              //Interpreta el viewport como en un navegador normal, no como uno fijo, es decir, coge la forma que le diga la pagina web
+                            loadWithOverviewMode = true                                         //Ajusta el contenido al ancho de la pantalla
+                            //offscreenPreRaster = true
+                        }
+
+                        setLayerType(View.LAYER_TYPE_HARDWARE, null)    //Fuerza el renderizado por GPU en lugar de por software (mejor rendimiento)
+
+                        webViewClient = object : WebViewClient() {              //Este es el cliente de naveegacion pero para el child (al igual que se hizo con el WebView padre)
+
+                            /*
+                            override fun shouldOverrideUrlLoading(
+                                v: WebView?,
+                                req: WebResourceRequest?
+                            ): Boolean {                                        //Lo ha hecho el controlador (True) o se lo deja al propio WebView (False)?
+                                val t = req?.url?.toString() ?: return false    //Si es null el controlador no hace nada
+                                v?.loadUrl(t)                                   //Si no es null, el controlador carga la url
+                                return true                                     //Si ha cargado la url, devuelve True, indicando que ya se ha ocupado de tod0
+                            }
+                            */
+
+                            override fun onPageStarted(                     //Metodo del WebViewClient que se ejecuta cuando el WebView empieza a cargar una pagina
+                                v: WebView?,                                //WebView que esta cargando la pagina
+                                url: String?,                               //Url de esta pagina
+                                favicon: android.graphics.Bitmap?) {        //Icono de la pagina
+                                if (url != null) view.loadUrl(url)          //Redirige la URL del popup a la WebView principal
+                                try { destroy() } catch (_: Exception) {}   //Limpia el child para evitar fugas y estados raros
+                                popupWebView = null                         //Pasa el valor de popupWebView de vuelta a null
+                            }
+                            /*
+                            override fun onPageStarted(                     //Metodo del WebViewClient que se ejecuta cuando el WebView empieza a cargar una pagina
+                                v: WebView?,                             //WebView que esta cargando la pagina
+                                url: String?,                               //Url de esta pagina
+                                favicon: android.graphics.Bitmap?) {        //Icono de la pagina
+
+                                super.onPageStarted(v, url, favicon)     //LLama al comportamiento por defecto del WebViewClient con los parametros como inputs
+                                canGoBack = v?.canGoBack() == true       //Actualiza el estado canGoBack, indicando que si se ha cargado una nueva pagina, habra una a la que volver
+                            }
+                            */
+
+
+                            override fun onPageFinished(v: WebView?, u: String?) {  //Se ejecuta cuando termina de cargar la pagina
+
+                                super.onPageFinished(v, u)                          //Se llama a la implementacion por defecto
+
+                                canGoBack = v?.canGoBack() == true                  //Actualiza una vez mas por si acaso el historial cambia al terminar de cargarse la pagina
+                                swipe.isRefreshing = false                          //Si has llegado a esta pagina refresheando, al terminar de cargar la pagina, cambia el estado de refreshing a false para indicar que el refresh ha finalizado
+
+
+                            }
+
+                        }
+
+                        webChromeClient = object : WebChromeClient() {                      //Funciones avanzadas del navegador pero para el child
+
+                            override fun onCloseWindow(window: WebView?) {                  //Cuando se cierra esta ventana
+                                try { popupWebView?.destroy() } catch (_: Exception) {}     //Se destruye el popupWebView para liberar memoria
+                                popupWebView = null                                         //Pasa el valor de popupWebView a null al ya no haber nada
+                            }
+                        }
+                    }
+
+                    val transport = resultMsg.obj as WebView.WebViewTransport   //Dentro del sobre vacio que era el resultMsg se introduce el objeto a transportar
+                    transport.webView = child                                   //Este objeto es el child
+                    resultMsg.sendToTarget()                                    //El sobre se envia al WebView padre
+
+                    //popupWebView = child                                        //Se devuelve el valor a popupView de child
+                    return true                                                 //Se devuelve True, indicando que ya se ha gestionado esta ventana
+                }
+
+                override fun onGeolocationPermissionsShowPrompt(    //Habilita la geolocalización (opcional), ocurre cuando el WebView pide acceso a la localización usando JavaScript
+                    origin: String?,                                //Dominio que solicita el permiso
+                    callback: GeolocationPermissions.Callback?      //Funcion que debes invocar para conceder/denegar el permiso
+                ) {
+                    callback?.invoke(origin, true, false)           //Si se ha pedido la ubicacion, se invoca la funcion que la permite
+                                                                    //Los inputs son el dominio que la pidio, True que indica que se concede y False que indica que no se recuerde esta decision si se cierra y vuelve a abrir la app
+                }
+            }
+
+
+
+
+
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //AJUSTES
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            settings.apply {    //El apply permite ponerlas todas una debajo de otra
+                javaScriptEnabled = true                                        //Permite que la pagina ejecute codigo JavaScript
+                domStorageEnabled = true                                        //Habilita el almacenamiento web (localStorage y sessionStorage)
+                databaseEnabled = true                                          //Permite bases de datos web (HTML5 Web SQL)
+                loadsImagesAutomatically = true                                 //Permite que las imágenes se carguen automaticamente
+                cacheMode = WebSettings.LOAD_DEFAULT                            //Establece como manejar el cache. LOAD_DEFAULT = usa el cache si esta disponible
+                javaScriptCanOpenWindowsAutomatically = true                    //Permite que JavaScript abra ventanas emergentes
+                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE //Permite cargar contenido mixto (HTTP dentro de HTTPS), en modo de compatibilidad
+                mediaPlaybackRequiresUserGesture = true                         //Permite abrir reproductores u otros medios solo mediante accion de usuario
+                setSupportMultipleWindows(true)                                 //Permite los popups
+                useWideViewPort = true                                              //Interpreta el viewport como en un navegador normal, no como uno fijo, es decir, coge la forma que le diga la pagina web
+                loadWithOverviewMode = true                                         //Ajusta el contenido al ancho de la pantalla
+                // (Opcional) user agent más “móvil” estándar si la web filtra WebViews
+                // userAgentString = WebSettings.getDefaultUserAgent(context)
+            }
+
+
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //COOKIES
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            // Habilita cookies (algunas webs las requieren)
+            CookieManager.getInstance().setAcceptCookie(true)                   //Habilita las cookies en general
+            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)  //Habilita cookies de terceros en el WebView
+
+
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //RENDER
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            // Render por HW (suele estar ya activo)
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)    //Fuerza el renderizado a traves de la GPU para aumentar el rendimiento de este
+
+
+            addJavascriptInterface(object {
+                @JavascriptInterface
+                fun retry() {
+                    // Asegura ejecutar en el hilo de UI de esa WebView concreta
+                    wv.post {
+                        val current = wv.url
+                        val target = if (isErrorAsset(current)) {
+                            // Reintenta lo que falló; si no lo sabemos, cae a original o a la inicial
+                            lastFailedUrlLocal
+                                ?: wv.originalUrl
+                                ?: current
+                                ?: initialUrl
+                        } else {
+                            current ?: initialUrl
+                        }
+                        if (target != null) {
+                            wv.loadUrl(target)
+                        } else {
+                            wv.reload()
+                        }
+                    }
+                }
+            }, "Android")
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //LOAD
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            loadUrl(url)    //Carga el url (Esta es la funcion principal)
+        }
 
 
             swipe.setOnChildScrollUpCallback { _, _ ->  //Si el child todavia puede desplazarse hacia arriba, no hace el refresh
                 (web.scrollY > 0)                       //True si el WebView no esta en el tope (Swiperefresh bloqueado), False si si esta en el tope
             }
 
+            /*
             // Acción de refresco (pull-to-refresh)
             swipe.setOnRefreshListener {        //Lo que ocurre cuando haces el refresh
                 val current = web.url ?: url    //Mete en una variable local la url acutal
                 web.loadUrl(current)            //Carga la variable actual, haciendo asi el refresh
+            }
+            */
+
+
+
+
+
+
+            swipe.setOnRefreshListener {
+
+                // Ajusta caché según conectividad (opcional pero recomendable)
+                /*
+                val online = isOnline(context)
+                web.settings.cacheMode = if (online) {
+                    WebSettings.LOAD_DEFAULT
+                } else {
+                    WebSettings.LOAD_CACHE_ELSE_NETWORK
+                }
+                */
+
+                // Si estamos mostrando el error, reintenta la última URL real
+
+                val current = web.url
+                val target = if (isErrorAsset(current)) {
+                    // Si estás en la pantalla de error, reintenta lo que falló
+                    lastFailedUrlLocal
+                        ?: web.originalUrl    // por si el motor recuerda algo
+                        ?: url                // como último recurso, la URL inicial del composable
+                } else {
+                    // Si no estás en error, recarga lo que haya
+                    current ?: url
+                }
+
+                if (target != null) {
+                    web.loadUrl(target)
+                } else {
+                    web.reload()
+                }
             }
 
             // Móntalo
@@ -360,3 +449,19 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
         }
     )
 }
+
+/*
+@Suppress("DEPRECATION")
+private fun isOnline(context: Context): Boolean {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        val nw = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(nw) ?: return false
+        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    } else {
+        val info = cm.activeNetworkInfo
+        info != null && info.isConnected
+    }
+}
+
+ */
