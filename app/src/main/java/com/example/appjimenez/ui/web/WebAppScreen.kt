@@ -1,6 +1,8 @@
 package com.example.appjimenez.ui.web
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.Context
 import android.os.Message
 import android.view.View
 import android.webkit.CookieManager
@@ -27,7 +29,9 @@ import android.content.Intent
 import android.os.Build
 import android.webkit.WebResourceError
 import android.webkit.JavascriptInterface
+import android.widget.Toast
 
+import android.content.ClipboardManager
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //DECLARACION DE VARIABLES EXTERNAS
@@ -95,10 +99,6 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
     var popupWebView by remember { mutableStateOf<WebView?>(null) }     //Igual que la anterior, pero con una WebView hija (los popups)
     var canGoBack by remember { mutableStateOf(false) }                 //Guarda en una variable local booleana que representa si hay una pagina a la que volver
 
-    //val skipErrorsOnBack = java.util.concurrent.atomic.AtomicBoolean(false)     //Guarda en una constante local un booleano dinamico (que puede cambiar) y que por default sera False
-                                                                                //Se usa AtomicBoolean en vez de var para que pueda ser accedido por diferenes hilos (el de UI que atiende al usuario a traves de botones o el de tareas internas)
-                                                                                //Sirve apra indicar que se esta en proceso de saltar paginas hasta llegar a una url valida al darle a atras
-
     var lastFailedUrlLocal: String? = null      //Variable local en la que se guarda un String
                                                 //Sera en la que se guarde la url a la que se trataba de llegar cuando fallo la conexion
 
@@ -156,7 +156,20 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
             overScrollMode = View.OVER_SCROLL_ALWAYS    //Muestra el efecto tipico cuando tratas de deslizar mas alla del limite de la pantalla (opcional)
 
 
-
+            setOnLongClickListener { v ->                                                                       //Funcion para copiar links manteniendo pulsado
+                val hitTestResult = (v as WebView).hitTestResult
+                if (hitTestResult.type == WebView.HitTestResult.SRC_ANCHOR_TYPE) {
+                    val linkUrl = hitTestResult.extra
+                    // Aquí ya tienes el enlace que el usuario mantuvo pulsado
+                    // Ejemplo: copiar al portapapeles
+                    val clipboard = v.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("URL", linkUrl))
+                    Toast.makeText(v.context, "Enlace copiado", Toast.LENGTH_SHORT).show()
+                    true
+                } else {
+                    false
+                }
+            }
 
             webViewClient = object : WebViewClient() {  //Propiedad de un objeto WebView que establece el controlador del navegador, en este caso sera el objeto WebViewClient
                                                         //Todas las llamadas realcionadas con la navegacion, como abrir links, pasaran por este objeto
@@ -198,21 +211,6 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
 
                 override fun onPageFinished(view: WebView?, url: String?) {     //Metodo del WebViewClient que se ejecuta cuando la pagina termina de cargarse completamente
                     super.onPageFinished(view, url)                             //Llama al comportamiento por defecto del WebViewClient con los parametros como inputs
-
-                    /*
-                    if (skipErrorsOnBack.get()) {                               //Chequea la flag atomica, si es True es que se esta en el proceso de busqueda de una url valida anterior a la actual
-                        val isError =                                           //Guarda en una constante local booleana que determina si la pagina no es valida
-                            url == null                                         //Si la url actual es nula
-                            || url == "about:blank"                             //Si la url actual es de una pagina en blanco
-                            || url.startsWith(ERROR_URL)                        //Si la url actual es de la pantalla de error de conexion
-                        if (isError && view?.canGoBack() == true) {             //Si la pagina no es valida y hay una pagina anterior
-                            view.goBack()                                       //Se va hacia atras
-                            return                                              //Acaba la funcion
-                        } else {                                                //Si la pagina es valida o no hay ninguna pagina anterior
-                            skipErrorsOnBack.set(false)                         //Se cambia el flag atomico indicando que llegado a una página valida o no podemos seguir (es decir, que no se esta buscando)
-                        }
-                    }
-                    */
 
                     canGoBack = view?.canGoBack() == true                       //Actualiza una vez mas por si acaso el historial cambia al terminar de cargarse la pagina
                     swipe.isRefreshing = false                                  //Si has llegado a esta pagina refresheando, al terminar de cargar la pagina, cambia el estado de refreshing a false para indicar que el refresh ha finalizado
@@ -283,23 +281,13 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                             userAgentString = WebSettings.getDefaultUserAgent(context)          //Usa el User-Agent (identificacion del navegador) estandar de Android/Chrome, asi la web no te detecta como un navegador raro
                             useWideViewPort = true                                              //Interpreta el viewport como en un navegador normal, no como uno fijo, es decir, coge la forma que le diga la pagina web
                             loadWithOverviewMode = true                                         //Ajusta el contenido al ancho de la pantalla
+                            offscreenPreRaster = true
                             //offscreenPreRaster = true
                         }
 
                         setLayerType(View.LAYER_TYPE_HARDWARE, null)    //Fuerza el renderizado por GPU en lugar de por software (mejor rendimiento)
 
                         webViewClient = object : WebViewClient() {              //Este es el cliente de naveegacion pero para el child (al igual que se hizo con el WebView padre)
-
-                            /*
-                            override fun shouldOverrideUrlLoading(
-                                v: WebView?,
-                                req: WebResourceRequest?
-                            ): Boolean {                                        //Lo ha hecho el controlador (True) o se lo deja al propio WebView (False)?
-                                val t = req?.url?.toString() ?: return false    //Si es null el controlador no hace nada
-                                v?.loadUrl(t)                                   //Si no es null, el controlador carga la url
-                                return true                                     //Si ha cargado la url, devuelve True, indicando que ya se ha ocupado de tod0
-                            }
-                            */
 
                             override fun onPageStarted(                     //Metodo del WebViewClient que se ejecuta cuando el WebView empieza a cargar una pagina
                                 v: WebView?,                                //WebView que esta cargando la pagina
@@ -309,17 +297,6 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                                 try { destroy() } catch (_: Exception) {}   //Limpia el child para evitar fugas y estados raros
                                 popupWebView = null                         //Pasa el valor de popupWebView de vuelta a null
                             }
-                            /*
-                            override fun onPageStarted(                     //Metodo del WebViewClient que se ejecuta cuando el WebView empieza a cargar una pagina
-                                v: WebView?,                             //WebView que esta cargando la pagina
-                                url: String?,                               //Url de esta pagina
-                                favicon: android.graphics.Bitmap?) {        //Icono de la pagina
-
-                                super.onPageStarted(v, url, favicon)     //LLama al comportamiento por defecto del WebViewClient con los parametros como inputs
-                                canGoBack = v?.canGoBack() == true       //Actualiza el estado canGoBack, indicando que si se ha cargado una nueva pagina, habra una a la que volver
-                            }
-                            */
-
 
                             override fun onPageFinished(v: WebView?, u: String?) {  //Se ejecuta cuando termina de cargar la pagina
 
@@ -372,7 +349,8 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                 setSupportMultipleWindows(true)                                 //Permite los popups
                 useWideViewPort = true                                          //Interpreta el viewport como en un navegador normal, no como uno fijo, es decir, coge la forma que le diga la pagina web
                 loadWithOverviewMode = true                                     //Ajusta el contenido al ancho de la pantalla
-
+                userAgentString = WebSettings.getDefaultUserAgent(context)          //Usa el User-Agent (identificacion del navegador) estandar de Android/Chrome, asi la web no te detecta como un navegador raro
+                offscreenPreRaster = true
             }
 
 
@@ -439,6 +417,7 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                 ViewGroup.LayoutParams.MATCH_PARENT     //En el alto, ocupa tod0 el contenedor
             )
         )
+
 
         swipe   //Valor de retorno que devuelve un View
                 //Es el nucelo de tu factory, es el view que se va a mostrar
