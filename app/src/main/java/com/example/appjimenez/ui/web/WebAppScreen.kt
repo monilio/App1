@@ -30,8 +30,11 @@ import android.os.Build
 import android.webkit.WebResourceError
 import android.webkit.JavascriptInterface
 import android.widget.Toast
-
+import android.graphics.Color
 import android.content.ClipboardManager
+import android.view.Gravity
+import android.widget.FrameLayout
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //DECLARACION DE VARIABLES EXTERNAS
@@ -39,6 +42,8 @@ import android.content.ClipboardManager
 
 private const val ERROR_URL = "file:///android_asset/error.html"    //Ruta hacia el html con la pantalla de error de conexion
 
+private fun Int.dpToPx(context: Context): Int =
+    (this * context.resources.displayMetrics.density).toInt()
 
 private fun isErrorAsset(url: String?):     //El prefijo is indica que sera una funcion booleana. El input es un string que puede ser null
                                             //Esta funcion nos dira si el link lleva a un error
@@ -147,6 +152,22 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
             )
         }
 
+        // --- CONTENEDOR RAÍZ PARA PODER POSICIONAR EL BOTÓN SOBRE EL WEBVIEW ---
+        val root = FrameLayout(context)
+
+// --- WEBVIEW OVERLAY QUE CARGA EL BOTÓN (assets/share.html) ---
+        val shareOverlay = WebView(context).apply {
+            // Ajustes mínimos
+            settings.javaScriptEnabled = true
+            setBackgroundColor(Color.TRANSPARENT)
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+
+
+            // Carga el HTML del botón
+            loadUrl("file:///android_asset/share.html")
+        }
+
         val web = WebView(context).apply {      //Crea un nuevo WebView y le pasa el contexto obligatorio, a su vez lo guarda en una variable local llamada web
                                                 //Este es un objeto que usara una url o link para mostrar una pagina web en el AndroidView  65
 
@@ -205,12 +226,15 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                     if (url != null && !isErrorAsset(url)) {    //Si la url no es nula y no es la de la pagina de error de conexion o una en blanco
                         lastFailedUrlLocal = url                //Esta url se convierte en la ultima url valida (la cual servira guardarla si hay error de conexion)
                     }
+                    shareOverlay.visibility = if (isErrorAsset(url)) View.GONE else View.VISIBLE
 
                     canGoBack = view?.canGoBack() == true       //Actualiza el estado canGoBack, indicando que si se ha cargado una nueva pagina, habra una a la que volver
                 }
 
                 override fun onPageFinished(view: WebView?, url: String?) {     //Metodo del WebViewClient que se ejecuta cuando la pagina termina de cargarse completamente
                     super.onPageFinished(view, url)                             //Llama al comportamiento por defecto del WebViewClient con los parametros como inputs
+
+                    shareOverlay.visibility = if (isErrorAsset(url)) View.GONE else View.VISIBLE
 
                     canGoBack = view?.canGoBack() == true                       //Actualiza una vez mas por si acaso el historial cambia al terminar de cargarse la pagina
                     swipe.isRefreshing = false                                  //Si has llegado a esta pagina refresheando, al terminar de cargar la pagina, cambia el estado de refreshing a false para indicar que el refresh ha finalizado
@@ -226,9 +250,13 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                         if (request?.isForMainFrame == true) {              //Si el error es de la pagina principal que se trata de ver (no de cosas como anuncios)
                             lastFailedUrlLocal  = request.url?.toString()   //Guarda localmente la url a la que se trataba de acceder cuando ocurrió el error
                             view?.loadUrl(ERROR_URL)                        //Carga la pagina de error de conexion
+                            shareOverlay.visibility = View.GONE
+
                         }
                     } else {                                                //Si el error no es de la pagina principal (no deberia darse este caso)
                         view?.loadUrl(ERROR_URL)                            //Se pone la pantalla de error de conexion igualmente
+                        shareOverlay.visibility = View.GONE
+
                     }
                 }
 
@@ -243,6 +271,8 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                         if (request?.isForMainFrame == true) {                      //Si el error es de la pagina principal que se trata de ver (no de cosas como anuncios)
                             lastFailedUrlLocal = request.url?.toString()            //Guarda localmente la url a la que se trataba de acceder cuando ocurrió el error
                             view?.loadUrl(ERROR_URL)                                //Carga la pagina de error de conexion (podria hacerse una personalizada)
+                            shareOverlay.visibility = View.GONE
+
                         }
                     }
                 }
@@ -362,9 +392,9 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
 
 
             addJavascriptInterface(object {                         //Funcion que va a importar el html y que funciona de forma simial a la de swiperefresh
+
                 @JavascriptInterface                                //Indica que esta funcion puede ser llamada desde un HTML con JavaScript
                 fun retry() {                                       //Nombre de la funcion que servira para hacer refresh pulsando un boton que la invoca
-
                     wv.post {                                       //Es la referencia local al WebView, lo de post es manejo de hilos por venir las cosas de JavaScript
                         val current = wv.url                        //Obtiene la url de dicho WebView
                         val target = if (isErrorAsset(current)) {   //Si se esta en la pantalla de error de conexion
@@ -383,10 +413,85 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                         }
                     }
                 }
+
+                @JavascriptInterface
+                fun share() {
+                    wv.post {
+                        val current = wv.url
+                        val target = if (isErrorAsset(current)) {
+                            lastFailedUrlLocal
+                                ?: wv.originalUrl
+                                ?: current
+                                ?: initialUrl
+                        } else {
+                            current ?: initialUrl
+                        }
+
+                        if (target != null) {
+                            try {
+                                val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, target)
+                                    putExtra(Intent.EXTRA_SUBJECT, wv.title ?: "Compartir enlace")
+                                }
+                                val chooser = Intent.createChooser(sendIntent, "Compartir enlace")
+                                wv.context.startActivity(chooser)
+                            } catch (e: Exception) {
+                                // Fallback: copiar al portapapeles si por algún motivo falla el share sheet
+                                val clipboard = wv.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("URL", target))
+                                Toast.makeText(wv.context, "No se pudo abrir compartir. Enlace copiado.", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            Toast.makeText(wv.context, "No hay URL para compartir", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+
             }, "Android")
 
             loadUrl(url)    //Carga el url (Esta es la funcion principal)
         }
+
+
+
+
+
+
+
+
+
+        val size = 56.dpToPx(context)
+// --- POSICIONAMIENTO DEL OVERLAY: ARRIBA CENTRADO POR DEFECTO ---
+        val overlayLp = FrameLayout.LayoutParams(
+            size,
+            size,
+            Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        ).apply {
+            //bottomMargin = 16.dpToPx(context)
+            //marginEnd = 16.dpToPx(context)
+            bottomMargin = 0.dpToPx(context) // util abajo
+            rightMargin = 155.dpToPx(context)
+        }
+
+// --- MONTAMOS LA JERARQUÍA: root contiene web y el overlay ---
+        root.addView(
+            web,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        root.addView(shareOverlay, overlayLp)
+
+
+
+
+
+
+
+
+
 
 
         swipe.setOnChildScrollUpCallback { _, _ ->  //Si el child todavia puede desplazarse hacia arriba, no hace el refresh
@@ -411,7 +516,7 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
         }
 
         swipe.addView(                                  //Swipe es un ViewGroup y con addView incluye un hijo al contenedor
-            web,                                        //web es el WebView hijo incluido
+            root,                                        //web es el WebView hijo incluido
             ViewGroup.LayoutParams(                     //Se pasan los parametros de forma
                 ViewGroup.LayoutParams.MATCH_PARENT,    //En el ancho, ocupa tod0 el contenedor
                 ViewGroup.LayoutParams.MATCH_PARENT     //En el alto, ocupa tod0 el contenedor
