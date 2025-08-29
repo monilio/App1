@@ -136,9 +136,9 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
 
 
         val swipe = SwipeRefreshLayout(context).apply {     //Utiliza el context para crear un SwipeRefreshLayout
-            //Este es un ViewGroup (contenedor de vistas) que detecta el gesto de arrasstrar hacia abajo para lanzar un refresh
-            //Lo de contenedor es porque es un marco que esta sobre el WebView principal aparte de tener su propio visual
-            //Se configurara mas abajo con setOnRefreshListener
+                                                            //Este es un ViewGroup (contenedor de vistas) que detecta el gesto de arrasstrar hacia abajo para lanzar un refresh
+                                                            //Lo de contenedor es porque es un marco que esta sobre el WebView principal aparte de tener su propio visual
+                                                            //Se configurara mas abajo con setOnRefreshListener
 
             setColorSchemeResources(                        //Configura los colores del circulo que gira al hacer refresh (opcional)
                 android.R.color.holo_orange_dark,           //Colores usados
@@ -156,18 +156,18 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
             overScrollMode = View.OVER_SCROLL_ALWAYS    //Muestra el efecto tipico cuando tratas de deslizar mas alla del limite de la pantalla (opcional)
 
 
-            setOnLongClickListener { v ->                                                                       //Funcion para copiar links manteniendo pulsado
-                val hitTestResult = (v as WebView).hitTestResult
-                if (hitTestResult.type == WebView.HitTestResult.SRC_ANCHOR_TYPE) {
-                    val linkUrl = hitTestResult.extra
-                    // Aquí ya tienes el enlace que el usuario mantuvo pulsado
-                    // Ejemplo: copiar al portapapeles
-                    val clipboard = v.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("URL", linkUrl))
-                    Toast.makeText(v.context, "Enlace copiado", Toast.LENGTH_SHORT).show()
-                    true
-                } else {
-                    false
+            setOnLongClickListener { v ->                                                       //Funcion para copiar links manteniendo pulsado, es un listener de Android. v es la View
+                val hitTestResult = (v as WebView).hitTestResult                                //Se convierte la vista v en un WebView porque es a lo que asignamos el listener.
+                                                                                                //hitTestResult es un objeto que nos dice que habia debajo del dedo en la pulsacion
+                if (hitTestResult.type == WebView.HitTestResult.SRC_ANCHOR_TYPE) {              //Si lo que se estaba pulsando es un hipervinculo (un link)
+                    val linkUrl = hitTestResult.extra                                           //La funcion extra otorga mas informacion del objeto pulsado, como la url
+                    val clipboard = v.context.
+                        getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager         //Se obtiene el servicio del sistema del portapapeles
+                    clipboard.setPrimaryClip(ClipData.newPlainText("URL", linkUrl))             //Se crea un objeto ClipData cuyo contenido es la url y se establece como contenido actual del portapapeles
+                    Toast.makeText(v.context, "Enlace copiado", Toast.LENGTH_SHORT).show()      //Muestra un mensajito de tipo Toast de que se ha copiado el enlace
+                    true                                                                        //Devuelve True indicando que ya se ha gestionado la accion y el sistema se puede olvidar de ella
+                } else {                                                                        //Si lo que se esta manteniendo pulsado no es un enlace
+                    false                                                                       //Simplemente devuelve False indicando que no se ha hecho nada y que tire del comportamiento normal
                 }
             }
 
@@ -281,7 +281,7 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                             userAgentString = WebSettings.getDefaultUserAgent(context)          //Usa el User-Agent (identificacion del navegador) estandar de Android/Chrome, asi la web no te detecta como un navegador raro
                             useWideViewPort = true                                              //Interpreta el viewport como en un navegador normal, no como uno fijo, es decir, coge la forma que le diga la pagina web
                             loadWithOverviewMode = true                                         //Ajusta el contenido al ancho de la pantalla
-                            offscreenPreRaster = true
+                            offscreenPreRaster = true                                           //Se supone que mejora el rendimiento
                             //offscreenPreRaster = true
                         }
 
@@ -337,7 +337,7 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
             }
 
 
-            settings.apply {    //El apply permite ponerlas todas una debajo de otra
+            settings.apply {                                                    //El apply permite ponerlas todas una debajo de otra
                 javaScriptEnabled = true                                        //Permite que la pagina ejecute codigo JavaScript
                 domStorageEnabled = true                                        //Habilita el almacenamiento web (localStorage y sessionStorage)
                 databaseEnabled = true                                          //Permite bases de datos web (HTML5 Web SQL)
@@ -349,8 +349,8 @@ fun WebAppScreen(url: String) {     //Toma de input un valor String que será el
                 setSupportMultipleWindows(true)                                 //Permite los popups
                 useWideViewPort = true                                          //Interpreta el viewport como en un navegador normal, no como uno fijo, es decir, coge la forma que le diga la pagina web
                 loadWithOverviewMode = true                                     //Ajusta el contenido al ancho de la pantalla
-                userAgentString = WebSettings.getDefaultUserAgent(context)          //Usa el User-Agent (identificacion del navegador) estandar de Android/Chrome, asi la web no te detecta como un navegador raro
-                offscreenPreRaster = true
+                userAgentString = WebSettings.getDefaultUserAgent(context)      //Usa el User-Agent (identificacion del navegador) estandar de Android/Chrome, asi la web no te detecta como un navegador raro
+                offscreenPreRaster = true                                       //Se supone que mejora rendimiento
             }
 
 
